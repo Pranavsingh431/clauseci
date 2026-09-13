@@ -1,0 +1,22 @@
+# Appearance and runtime only. No secret belongs in this file, and the public
+# deployment needs no .streamlit/secrets.toml at all.
+
+[theme]
+base = "dark"
+primaryColor = "#5B8DEF"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#161A23"
+textColor = "#E6E9EF"
+font = "sans serif"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false

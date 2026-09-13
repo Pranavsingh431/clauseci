@@ -93,7 +93,7 @@ From `evals/results/latest-summary.json`, generated from raw records.
 | Duplicate Slack root cases | 0 |
 | Wrong target writes | 0 |
 | Unknown outcomes after reconciliation | 0 |
-| Engineering regression tests | 386 passing |
+| Engineering regression tests | 400 passing |
 
 The regression suite is engineering evidence. It is separate from the evaluation
 score and the two are never added together.
