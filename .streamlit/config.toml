@@ -1,5 +1,13 @@
-# Appearance and runtime only. No secret belongs in this file, and the public
-# deployment needs no .streamlit/secrets.toml at all.
+# Appearance only.
+#
+# Networking is deliberately absent. Streamlit Community Cloud owns the server,
+# the proxy and the websocket, and forcing server options here fights it. An
+# earlier version set server.enableCORS = false alongside
+# server.enableXsrfProtection = true, which Streamlit warns about on every
+# start and silently overrides. Those options are gone.
+#
+# No secret belongs in this file, and the public deployment needs no
+# .streamlit/secrets.toml at all.
 
 [theme]
 base = "dark"
@@ -9,14 +17,11 @@ secondaryBackgroundColor = "#161A23"
 textColor = "#E6E9EF"
 font = "sans serif"
 
-[server]
-headless = true
-enableCORS = false
-enableXsrfProtection = true
-
 [browser]
 gatherUsageStats = false
 
 [client]
 toolbarMode = "minimal"
-showErrorDetails = false
+# Error details stay visible. Hiding them turns a recoverable problem into a
+# page that looks blank, which is exactly what makes a demo failure unreadable.
+showErrorDetails = true

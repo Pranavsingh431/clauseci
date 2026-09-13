@@ -304,3 +304,169 @@ def test_a_streamlit_config_exists_and_holds_no_secret():
         for banned in ("token", "key", "secret", "password", "credential"):
             assert banned not in name, f"config.toml sets {name}, which looks like a secret"
     assert not (ROOT / ".streamlit" / "secrets.toml").exists()
+
+
+# ───────────────────────── deployment reliability, DEP01 to DEP08
+#
+# Added after the public deployment intermittently rendered a blank page. The
+# cause turned out to be a Streamlit Cloud access setting rather than this code,
+# but the investigation found real weaknesses that these tests now hold shut.
+
+def test_dep01_the_page_identity_renders_before_anything_can_stop():
+    """
+    A visitor must never get a dark rectangle. The header is rendered by a
+    helper that runs before evidence loading, and the failure path calls it too.
+    """
+    body = CONSOLE.read_text()
+    assert "def render_header()" in body
+    stop_index = body.index("st.stop()")
+    header_index = body.index("render_header()")
+    assert header_index < stop_index, "st.stop() can be reached before any content"
+    failure_block = body[body.index("except Exception as exc"):stop_index]
+    assert "render_header()" in failure_block, "the failure path renders no identity"
+
+
+def test_dep02_evidence_paths_resolve_from_the_repository_not_the_cwd():
+    body = CONSOLE.read_text()
+    assert "Path(__file__).resolve().parent.parent" in body
+    for name in ("hero-lifecycle.json", "latest-summary.json", "sanitized-raw.jsonl"):
+        assert f'"{name}"' in body
+    assert "os.getcwd" not in body and "./evals" not in body
+
+
+@pytest.mark.parametrize("artifact", [
+    "evals/results/hero-lifecycle.json",
+    "evals/results/latest-summary.json",
+    "evals/results/sanitized-raw.jsonl",
+])
+def test_dep02_every_required_artifact_is_tracked_with_exact_casing(artifact):
+    tracked = subprocess.run(["git", "ls-files", artifact], cwd=ROOT,
+                             capture_output=True, text=True).stdout.split()
+    assert artifact in tracked, f"{artifact} is not tracked, so a deployment cannot read it"
+    assert (ROOT / artifact).exists()
+
+
+def test_dep03_a_missing_artifact_renders_a_visible_failure_not_a_blank_page():
+    body = CONSOLE.read_text()
+    failure = body[body.index("except Exception as exc"):body.index("st.stop()")]
+    assert "st.error" in failure
+    assert "could not load its evidence" in failure
+    assert "print(" in failure, "a failure must also reach the server log"
+
+
+def test_dep04_the_page_needs_no_session_state_to_render():
+    body = CONSOLE.read_text()
+    for api in ("st.session_state", "st.rerun", "st.experimental_rerun",
+                "cache_resource", "st.fragment", "query_params"):
+        assert api not in body, f"the page uses {api}, which can branch on reload"
+
+
+def test_dep05_no_css_rule_can_hide_the_whole_application():
+    css = THEME.read_text()
+    for reckless in ("body {", "html {", ".stApp {", "stAppViewContainer",
+                     'data-testid="stMain"', "section.main"):
+        assert reckless not in css, f"CSS targets {reckless}, which can blank the page"
+    # hiding is allowed, but only against a named Streamlit test id
+    for line in css.splitlines():
+        if "visibility: hidden" in line or "display: none" in line:
+            assert "data-testid" in line, f"unscoped hide rule: {line.strip()}"
+
+
+def test_dep06_the_supported_runtime_is_documented():
+    """
+    Cloud runs a newer Python than local. The app was verified on both, and the
+    finding is written down so nobody has to rediscover it.
+    """
+    hardening = (ROOT / "docs" / "HARDENING.md").read_text()
+    assert "3.14" in hardening, "the verified cloud runtime is not documented"
+
+
+def test_dep07_public_startup_touches_no_credential():
+    body = CONSOLE.read_text()
+    for banned in ("os.environ", "getenv", "load_dotenv", "secrets.toml",
+                   "st.secrets"):
+        assert banned not in body
+
+
+def test_dep08_streamlit_config_forces_no_server_or_network_option():
+    """
+    Community Cloud owns the server, the proxy and the websocket. An earlier
+    config set enableCORS = false next to enableXsrfProtection = true, which
+    Streamlit warns about and overrides on every start.
+    """
+    lines = [l for l in (ROOT / ".streamlit" / "config.toml").read_text().splitlines()
+             if l.strip() and not l.strip().startswith("#")]
+    body = "\n".join(lines)
+    assert "[server]" not in body, "config.toml forces server options on Cloud"
+    for option in ("enableCORS", "enableXsrfProtection", "port", "address",
+                   "headless", "enableWebsocketCompression"):
+        assert option not in body, f"config.toml sets {option}"
+
+
+def test_dep08_errors_are_shown_rather_than_hidden():
+    config = (ROOT / ".streamlit" / "config.toml").read_text()
+    assert "showErrorDetails = true" in config, (
+        "hiding error details turns a recoverable failure into a blank looking page")
+
+
+def test_startup_diagnostics_log_only_safe_facts():
+    body = CONSOLE.read_text()
+    diagnostics = body[body.index("def startup_diagnostics"):body.index("def render_header")]
+    assert "python" in diagnostics and "streamlit" in diagnostics
+    assert "evidence present" in diagnostics
+    # check what is actually logged, not the docstring that explains the rule
+    logged = [l for l in diagnostics.splitlines()
+              if 'f"' in l or ('"' in l and "lines" in l)]
+    for line in logged:
+        for banned in ("token", "secret", "credential", "environ", "os."):
+            assert banned not in line.lower(), f"diagnostics may log {banned}: {line.strip()}"
+
+
+# --- DEP09 / DEP10 -----------------------------------------------------------
+# The blank public page was not a dependency, a runtime or a proxy problem. The
+# page was drawn as a side effect of `import ui.console`, and Streamlit re-runs
+# the entry script on every rerun and every new browser session while
+# `sys.modules` lives as long as the server process. So the first visitor after
+# a start rendered and every visitor after that got an empty page. Measured on
+# the cloud's own Python 3.14.7 with real websocket sessions: 1 of 10 rendered
+# before the fix, 10 of 10 after it.
+
+
+def test_dep09_the_page_renders_on_every_run_not_only_the_first():
+    """Draw the page twice in one process, the way a server serves two visitors."""
+    apptest = pytest.importorskip("streamlit.testing.v1")
+
+    counts = []
+    for _ in range(2):
+        run = apptest.AppTest.from_file(str(ROOT / "streamlit_app.py"),
+                                        default_timeout=120)
+        run.run()
+        assert not run.exception, f"render raised: {run.exception}"
+        counts.append(len(run.markdown))
+
+    assert counts[0] > 50, f"first render produced almost nothing: {counts[0]} blocks"
+    assert counts[1] == counts[0], (
+        f"second render produced {counts[1]} blocks against {counts[0]} on the "
+        "first. The page is being drawn by an import side effect, so only the "
+        "first visitor after a server start sees it."
+    )
+
+
+def test_dep10_the_entry_point_calls_the_page_rather_than_importing_it():
+    """A bare import cannot redraw a page. The entry point must call something."""
+    tree = ast.parse((ROOT / "streamlit_app.py").read_text())
+
+    called = {node.func.id for node in ast.walk(tree)
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    assert "main" in called, (
+        "streamlit_app.py never calls main(). Rendering on import alone draws "
+        "the page once per server process, not once per visitor."
+    )
+
+    console = ast.parse((ROOT / "ui" / "console.py").read_text())
+    top_level_effects = [n for n in console.body
+                         if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)]
+    assert not top_level_effects, (
+        "ui/console.py draws at import time again: "
+        f"{[ast.unparse(n)[:60] for n in top_level_effects]}"
+    )

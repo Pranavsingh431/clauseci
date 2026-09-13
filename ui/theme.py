@@ -12,7 +12,10 @@ from __future__ import annotations
 CSS = """
 <style>
   .block-container {padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1220px;}
-  #MainMenu, footer {visibility: hidden;}
+  /* Scoped to Streamlit's own test ids. A bare `footer` selector would reach
+     into undocumented DOM that changes between versions, and hiding the wrong
+     node is how a page ends up looking blank. */
+  [data-testid="stMainMenu"] {visibility: hidden;}
   header [data-testid="stToolbar"] {right: 1rem;}
 
   .cci-eyebrow {font-size:.70rem; letter-spacing:.16em; text-transform:uppercase;

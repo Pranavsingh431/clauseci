@@ -10,7 +10,7 @@ Runtime commit at the time of hardening: `ed7252a8d8dbc0f36ef3d0370ccdc5eee4ee80
 
 | Check | Result |
 |---|---|
-| pytest regression suite | 401 passed |
+| pytest regression suite | 416 passed |
 | Core evaluation, no provider mutation | 65 records, 65 passed |
 | Full evaluation including live read only confirmation | 70 records, 70 passed |
 | **False greens** | **0 of 11 unsafe or unresolved cases** |
@@ -80,6 +80,65 @@ reach a provider write, and the help text says so.
 One read only run on the corrected commit: snapshot 11.45s, semantic 0.06s on a
 warm cache, decision 13 ms, total 12.60s. A cold semantic pass measured about 40
 seconds in earlier phases. One sample each. No percentiles are claimed.
+
+## The blank public page
+
+The deployed console rendered for one visitor and then served an empty dark
+shell to everyone else. The cause was ours, and it was in four lines.
+
+`ui/console.py` drew the entire page at import time, and `streamlit_app.py`
+did nothing but `import ui.console`. Streamlit re-executes the entry script on
+every rerun and on every new browser session, but `sys.modules` lives for the
+whole life of the server process. So the second `import ui.console` was a no
+op. The first visitor after a start rendered the console. Every visitor after
+that ran a script that did nothing and got a blank page. A reboot appeared to
+fix it, which is what made the failure look intermittent and made the proxy,
+the runtime and the CDN all look guilty.
+
+The page now renders from `ui.console.main()`, which the entry point calls on
+every run.
+
+Measured on Streamlit's own Python 3.14.7 stack, driving real websocket
+sessions against a live server exactly as a browser tab does, counting the
+elements actually delivered:
+
+| Code | Sessions that rendered |
+| --- | --- |
+| Before the fix | 1 of 10 |
+| After the fix | 10 of 10 |
+
+Only the first session before the fix rendered, and it delivered 193 elements
+where the other nine delivered zero. DEP09 and DEP10 hold the fix: DEP09 draws
+the page twice in one process and requires the second render to match the
+first, DEP10 requires the entry point to call a function rather than lean on an
+import. Both fail against the previous code.
+
+## Public deployment runtime
+
+The local environment runs Python 3.10.12. Streamlit Community Cloud runs
+Python 3.14.7, four minor versions ahead, and resolves pandas 3.0.5 where the
+local environment has pandas 2.3.3.
+
+That gap was the first suspect, so it was tested rather than assumed. The
+console was built into a Python 3.14.7 environment from the same
+`requirements.txt` and run through Streamlit's AppTest harness: the script
+completed with zero exceptions, rendering 102 markdown blocks, 6 dataframes
+and 9 tabs. Served over HTTP on that stack it returns 200 and its health
+endpoint reports ok.
+
+The runtime is compatible and no Python version pin is needed. The public
+app's imports are `json`, `pathlib`, `sys` and `streamlit`, so it does not
+exercise the heavier pinned dependencies at all. Clearing the runtime early is
+what left the import side effect as the only remaining explanation.
+
+## Public deployment access
+
+Separate from the rendering defect, the deployed app answers an anonymous
+request with `HTTP 303` to `share.streamlit.io/-/auth/app`. `/_stcore/health`
+and `/_stcore/stream` redirect the same way, so an anonymous viewer's websocket
+never opens. That is a viewer access setting on the deployment, not a property
+of this code, and it is changed by a human in the Streamlit Cloud dashboard.
+The same endpoints on a local server on the same stack return 200 and ok.
 
 ## Known limitations
 
