@@ -594,3 +594,37 @@ Verified working on OpenRouter with strict JSON schema output.
 
 Extracted contract text is cached per run. The 8 PDFs are not re downloaded for
 each model call.
+
+
+## Evaluation architecture
+
+Three modes, kept visibly separate everywhere, because conflating them is how a
+reliability claim becomes misleading.
+
+| Mode | What it touches | What it proves |
+|---|---|---|
+| SEMANTIC | real model, local contract fixtures | the model read the right obligation from the right source |
+| DECISION, KERNEL, LIFECYCLE | nothing external, fake providers, injected faults | deterministic code decided correctly and recovered correctly |
+| LIVE | real GitHub, Google Drive and Slack, read only | the external effects actually happened |
+
+A locally fault injected result is never labelled LIVE. A real provider read is
+never described as simulated.
+
+Raw records are written first, as JSON lines. Every summary number is computed
+from those records by `evals/metrics.py`. A summary can be rebuilt from saved
+raw evidence with `--summarize`, so the numbers are reproducible without paying
+for the model again.
+
+The metric that matters most is the false green count, reported with its
+denominator: unsafe or unresolved cases that came back releasable. A metric
+reported without its denominator can hide the size of the sample, so every ratio
+here carries both numbers.
+
+Safe case completion exists to stop the opposite failure. An agent that blocked
+everything would score perfectly on false greens and be useless.
+
+## Product feature freeze
+
+The product feature set is frozen as of Phase 8. Production changes are limited
+to false green bugs, broken provider verification, a broken demo path, a
+security issue, or a submission blocking defect. No new capabilities.

@@ -78,3 +78,97 @@ interpretation does not prove the Slack action happened. Report the three
 correctness numbers separately.
 
 Never report a number the runner did not produce.
+
+
+---
+
+# Measured results
+
+Everything below comes from `evals/results/latest-summary.json`, which is
+computed from the raw records in `evals/results/raw/`. No number here was typed
+by hand.
+
+Run the suite yourself:
+
+```bash
+./.venv/bin/python -m evals.run                  # local, never mutates a provider
+./.venv/bin/python -m evals.run --mode live      # adds read only provider confirmation
+```
+
+## Headline
+
+**0 false greens across 11 unsafe or unresolved cases.**
+A false green is a case whose correct answer is CONFLICT or REVIEW_REQUIRED that
+came back releasable. It is the one metric that matters most, and it is reported
+with its denominator.
+
+Safe case completion 5 of 5.
+That metric exists so that blocking everything cannot look reliable.
+
+## By mode
+
+| Mode | Result | Kind of evidence |
+|---|---|---|
+| SEMANTIC | 10 of 10 unique scenarios | real model calls, local contract fixtures, cache disabled |
+| DECISION | 20 of 20 | deterministic, no model |
+| KERNEL | 20 of 20 | local fault injection against fake providers |
+| LIFECYCLE | 5 of 5 | local, fake providers |
+| LIVE | 5 of 5 | real GitHub, Google Drive and Slack, read only |
+
+Semantic repeats are counted separately from unique scenarios.
+10 unique scenarios produced
+20 model dependent executions,
+of which 10 were repeats and
+10 passed. Saying "20 scenarios"
+would be wrong.
+
+Recovery 5 of 5
+over K03, K04, K06, K09, K18, the scenarios
+where a fault is recoverable at all.
+
+Verified live task completion 2 of
+2, measured over whole multi app
+workflows only.
+
+## Unintended effects
+
+| Effect | Count |
+|---|---|
+| autonomous merges | 0 |
+| autonomous remediation commits | 0 |
+| drive mutations | 0 |
+| duplicate slack root cases | 0 |
+| gmail actions | 0 |
+| unexpected github contexts | 0 |
+| unknown outcomes after reconciliation | 0 |
+| wrong target writes | 0 |
+
+## Cost and latency
+
+4 sampled model dependent passes,
+$0.102792 total reported cost,
+26552 tokens. Pass latency ranged from
+3527 ms to 36772 ms.
+The sample is far too small for percentiles and none are claimed.
+
+## A correction made during evaluation
+
+L04 originally used demo pull request 2 as a clean negative control and expected
+NO_SUPPORTED_CHANGE. The analyzer returned CONFLICT. **The analyzer was right.**
+That branch predates the Phase 1 baseline rewrite and still carries acme-corp
+audit retention at 90 days against a 30 day cap, which is a real pre existing
+breach. The expectation was wrong, not the code.
+
+The failing record is preserved unchanged under `evals/results/superseded/`,
+with the source configuration quoted. L04 now uses a purpose built safe
+retention pull request instead.
+
+## What this does not measure
+
+- One obligation family, RETENTION_UPPER_BOUND, over three log categories.
+- One synthetic contract corpus and one customer cohort of three.
+- Kernel and lifecycle results come from local fault injection, not from real
+  provider outages.
+- Live results are read only confirmation of state produced by the real runs.
+- The regression suite is 354 pytest tests. That is engineering evidence and is
+  deliberately not reported as an evaluation score.

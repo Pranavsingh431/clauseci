@@ -56,7 +56,38 @@ resource, moves to RESOLVED and names both commits.
 ClauseCI proposes the correction. A developer applies it. ClauseCI does not
 commit, push or merge code, and a test greps the runtime to keep it that way.
 
-The evaluation runner is not built yet.
+## Measured results
+
+From `evals/results/latest-summary.json`, generated from raw records. Run it
+with `./.venv/bin/python -m evals.run --mode live`.
+
+**0 false greens across 11 unsafe or unresolved cases.**
+A false green is a case that should have blocked a release and did not.
+
+| Mode | Result | Evidence |
+|---|---|---|
+| SEMANTIC | 10 of 10 unique scenarios | real model calls, cache disabled |
+| DECISION | 20 of 20 | deterministic |
+| KERNEL | 20 of 20 | local fault injection |
+| LIFECYCLE | 5 of 5 | local |
+| LIVE | 5 of 5 | real GitHub, Drive and Slack, read only |
+
+Safe case completion 5 of 5,
+so blocking everything cannot look reliable. Recovery
+5 of 5 recoverable fault cases.
+Zero duplicate Slack cases, zero wrong target writes, zero Gmail actions, zero
+Drive mutations, zero autonomous merges.
+
+10 unique semantic scenarios produced
+20 model dependent executions,
+because the high risk ones are repeated three times with the cache disabled.
+Those repeats are reported separately and are not counted as extra scenarios.
+
+Separately, the repository has 354 pytest regression tests. That is engineering
+evidence, not an evaluation score, and the two are never merged into one number.
+
+See `docs/EVAL_SCENARIOS.md` for the full breakdown and for one case where the
+evaluation expectation was wrong and the analyzer was right.
 
 See `BUILD_START_REPORT.md` for exactly what existed before the build window
 opened, and what is being built during it.

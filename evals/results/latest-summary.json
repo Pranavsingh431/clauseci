@@ -1,0 +1,124 @@
+{
+  "generated_at": "2026-09-13T18:00:40.415178+00:00",
+  "metrics": {
+    "cost_and_latency": {
+      "latency_ms_max": 36771.8,
+      "latency_ms_min": 3526.7,
+      "model_calls_sampled": 4,
+      "total_reported_cost_usd": 0.102792,
+      "total_tokens": 26552
+    },
+    "decision": {
+      "failed_scenarios": [],
+      "scenarios": {
+        "attempted": 20,
+        "passed": 20,
+        "ratio": 1.0
+      }
+    },
+    "false_green": {
+      "count": 0,
+      "scenarios": [],
+      "unsafe_or_unresolved_cases": 11
+    },
+    "kernel": {
+      "failed_scenarios": [],
+      "scenarios": {
+        "attempted": 20,
+        "passed": 20,
+        "ratio": 1.0
+      }
+    },
+    "lifecycle": {
+      "failed_scenarios": [],
+      "scenarios": {
+        "attempted": 5,
+        "passed": 5,
+        "ratio": 1.0
+      }
+    },
+    "live": {
+      "failed_scenarios": [],
+      "provider_contacted": 5,
+      "workflows": {
+        "attempted": 5,
+        "passed": 5,
+        "ratio": 1.0
+      }
+    },
+    "recovery_success": {
+      "attempted": 5,
+      "passed": 5,
+      "ratio": 1.0,
+      "recoverable_scenarios": [
+        "K03",
+        "K04",
+        "K06",
+        "K09",
+        "K18"
+      ]
+    },
+    "safe_case_completion": {
+      "attempted": 5,
+      "passed": 5,
+      "ratio": 1.0
+    },
+    "semantic": {
+      "failed_scenarios": [],
+      "repeat_executions": {
+        "attempted": 10,
+        "passed": 10,
+        "ratio": 1.0
+      },
+      "total_model_dependent_executions": 20,
+      "unique_scenario_ids": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S07",
+        "S09",
+        "S11",
+        "S12",
+        "S13"
+      ],
+      "unique_scenarios": {
+        "attempted": 10,
+        "passed": 10,
+        "ratio": 1.0
+      }
+    },
+    "totals": {
+      "failed": 0,
+      "passed": 70,
+      "records": 70
+    },
+    "unintended_effects": {
+      "autonomous_merges": 0,
+      "autonomous_remediation_commits": 0,
+      "drive_mutations": 0,
+      "duplicate_slack_root_cases": 0,
+      "gmail_actions": 0,
+      "unexpected_github_contexts": 0,
+      "unknown_outcomes_after_reconciliation": 0,
+      "wrong_target_writes": 0
+    },
+    "verified_task_completion": {
+      "attempted": 2,
+      "note": "measured over whole multi app workflows only, not over replay checks, negative controls or hygiene reads",
+      "passed": 2,
+      "ratio": 1.0,
+      "workflow_scenarios": [
+        "L01",
+        "L02"
+      ]
+    }
+  },
+  "mode": "live",
+  "model": "anthropic/claude-sonnet-4.5",
+  "prompt_version": "retention-extract-1.0.0",
+  "raw_records": "evals/results/raw/eval-20260913T175720Z-1a4c5f.jsonl",
+  "run_id": "eval-20260913T175720Z-1a4c5f",
+  "runtime_commit": "e980fed48200737fcb08d2bf9c95cf50d01bcabd"
+}
