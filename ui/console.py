@@ -19,7 +19,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from ui import theme
+from ui import sandbox, theme
 from ui.theme import ARROW_DOWN, badge, card, field, flow, metric, pill, step
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +34,11 @@ PR_URL = f"{DEMO_REPO_URL}/pull/1"
 CATEGORIES = ["application_logs", "diagnostic_logs", "audit_logs"]
 LABEL = {"application_logs": "Application", "diagnostic_logs": "Diagnostic",
          "audit_logs": "Audit"}
+DISPOSITION_LABEL = {
+    "SATISFIED": "Pass", "VIOLATED": "Conflict",
+    "NO_REPRESENTED_OBLIGATION": "No represented obligation",
+    "REVIEW_REQUIRED": "Review required",
+}
 ENTITY = {"acme-corp": "Acme Corporation", "globex": "Globex International Ltd.",
           "acme-labs": "Acme Labs Pvt Ltd"}
 
@@ -206,7 +211,7 @@ def main() -> None:
     correction = evidence["correction"]
     preferred = next(c for c in unsafe["candidates"]
                      if c["candidate_id"] == unsafe["preferred_candidate_id"])
-    regression_tests = 441
+    regression_tests = 455
 
     # Customer impact, derived from the recorded evidence rather than written in
     # by hand, so the headline numbers cannot drift away from the run.
@@ -296,6 +301,91 @@ def main() -> None:
             ("Re-analyze corrected commit", ""),
             ("Resolve the same case", "end"),
         ]), unsafe_allow_html=True)
+
+        st.markdown(theme.spacer(26), unsafe_allow_html=True)
+        st.markdown("### Try the release decision yourself")
+        st.caption("Change the proposed retention period. This sandbox uses ClauseCI's "
+                   "verified contract obligations and its deterministic release engine. "
+                   "It performs no external writes.")
+
+        controls, verdict = st.columns([1, 1.6])
+        with controls:
+            application_days = st.slider(
+                "Application log retention (days)", sandbox.MIN_DAYS, sandbox.MAX_DAYS,
+                sandbox.DEFAULT_DAYS, key="sandbox_application")
+            diagnostic_days = st.slider(
+                "Diagnostic log retention (days)", sandbox.MIN_DAYS, sandbox.MAX_DAYS,
+                sandbox.DEFAULT_DAYS, key="sandbox_diagnostic")
+
+        result = sandbox.evaluate(evidence, {
+            "application_logs": application_days,
+            "diagnostic_logs": diagnostic_days,
+        })
+        conflicted = result.conflicted
+
+        with verdict:
+            st.markdown(card(
+                '<div class="cci-label">Scoped release decision</div>',
+                '<div style="margin-top:6px">'
+                + badge(result.state.value, "bad" if conflicted else "good") + '</div>',
+                f'<div class="cci-note" style="margin-top:9px">{result.reason}</div>',
+                kind="bad" if conflicted else "good"), unsafe_allow_html=True)
+
+        sandbox_rows = []
+        for customer_id in sandbox.COHORT:
+            per_category = {row.category: row for row in result.rows
+                            if row.customer_id == customer_id}
+            application = per_category["application_logs"]
+            diagnostic = per_category["diagnostic_logs"]
+            sandbox_rows.append({
+                "Customer": ENTITY[customer_id],
+                "Requested application": application.requested,
+                "Requested diagnostic": diagnostic.requested,
+                "Represented limit": application.represented_limit,
+                "Application result": DISPOSITION_LABEL.get(
+                    application.disposition, application.disposition),
+                "Diagnostic result": DISPOSITION_LABEL.get(
+                    diagnostic.disposition, diagnostic.disposition),
+            })
+        st.dataframe(sandbox_rows, width="stretch", hide_index=True)
+
+        if conflicted and result.preferred is not None:
+            proposal = result.preferred
+            # Not `corrected`: that name already holds the corrected analysis from
+            # the recorded run, and shadowing it blanks the lifecycle section.
+            scoped_values: dict = {}
+            for value in proposal.effective_values:
+                scoped_values.setdefault(value.customer_id, {})[value.category] = value.value
+
+            scoped_line = " &nbsp;·&nbsp; ".join(
+                f"{ENTITY[customer_id].split()[0]} <b>"
+                f"{scoped_values[customer_id]['application_logs']}</b>"
+                for customer_id in sandbox.COHORT)
+
+            correction_col, preserved_col = st.columns([1.6, 1])
+            correction_col.markdown(card(
+                '<div class="cci-label">Correction ClauseCI would propose</div>',
+                f'<div class="cci-value" style="margin-top:6px">{scoped_line}</div>',
+                f'<div class="cci-note" style="margin-top:9px">Candidate '
+                f'{proposal.candidate_id} of {len(result.candidates)} evaluated. '
+                f'{proposal.description}.</div>', kind="pref"), unsafe_allow_html=True)
+            preserved_col.markdown(card(
+                theme.metric(
+                    f"{proposal.requested_outcomes_preserved} of "
+                    f"{proposal.requested_outcomes_total}",
+                    f"requested category outcomes preserved, across "
+                    f"{proposal.customers_fully_preserved} of "
+                    f"{proposal.customers_total} customers"),
+                kind="plain"), unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="cci-note">The full ClauseCI workflow uses Google Drive and '
+            'semantic contract analysis to derive these obligations. This public sandbox '
+            'reuses the verified obligations from the captured demo, so visitors can '
+            'explore the release decision safely without credentials or provider '
+            'writes. The decision, the candidates and the preserved counts above are '
+            'computed by the same deterministic engine the product runs.</div>',
+            unsafe_allow_html=True)
 
         st.markdown(theme.spacer(26), unsafe_allow_html=True)
         st.markdown("### The change, and what ClauseCI proposed")

@@ -20,6 +20,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 CONSOLE = ROOT / "ui" / "console.py"
 THEME = ROOT / "ui" / "theme.py"
+SANDBOX = ROOT / "ui" / "sandbox.py"
 ENTRY = ROOT / "streamlit_app.py"
 EVIDENCE = ROOT / "evals" / "results" / "hero-lifecycle.json"
 SUMMARY = ROOT / "evals" / "results" / "latest-summary.json"
@@ -67,7 +68,7 @@ def summary() -> dict:
 
 @pytest.fixture(scope="module")
 def source() -> str:
-    return CONSOLE.read_text() + THEME.read_text()
+    return CONSOLE.read_text() + THEME.read_text() + SANDBOX.read_text()
 
 
 # ───────────────────────────────────── PUB01 to PUB03, loading
@@ -96,7 +97,7 @@ def test_the_entry_point_is_tiny_and_does_not_duplicate_logic():
 
 # ───────────────────────────── PUB04 to PUB06, the security boundary
 
-@pytest.mark.parametrize("path", [CONSOLE, THEME, ENTRY])
+@pytest.mark.parametrize("path", [CONSOLE, THEME, ENTRY, SANDBOX])
 def test_pub04_to_pub06_no_provider_or_credential_import(path):
     """The public page must have no import path to a write, a key or the model."""
     imported = imported_modules(path)
