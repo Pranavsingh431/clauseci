@@ -166,7 +166,7 @@ everything cannot look reliable.
 the high risk ones run three times with the cache off. Repeats are reported
 separately and are not counted as extra scenarios.
 
-Separately, the repository has **455 engineering regression tests** passing.
+Separately, the repository has **474 engineering regression tests** passing.
 That is engineering evidence, not an evaluation score, and the two are never
 added together.
 
@@ -281,7 +281,7 @@ clauseci/          runtime package
   run.py           the product command
 demo_contracts/    8 synthetic contract PDFs
 evals/             evaluation runner, oracles, generated results
-tests/             455 regression tests
+tests/             474 regression tests
 ui/console.py      the Evidence Console
 docs/              architecture, evaluation, hardening
 ```

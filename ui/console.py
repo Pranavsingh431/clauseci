@@ -19,7 +19,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from ui import sandbox, theme
+from ui import operator, sandbox, theme
 from ui.theme import ARROW_DOWN, badge, card, field, flow, metric, pill, step
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -160,6 +160,155 @@ def render_header() -> None:
                 unsafe_allow_html=True)
 
 
+def render_operator(tab, evidence: dict) -> None:
+    """
+    The local live operator.
+
+    Only reached when CLAUSECI_OPERATOR_MODE=1. On the public deployment this
+    function is never called and `ui.operator` imports no provider module, so
+    the deployed site stays read only and needs no credential.
+    """
+    with tab:
+        st.markdown("### Live operator")
+        st.caption("Run the authenticated ClauseCI workflow against a GitHub pull "
+                   "request. This is local only. It is never available on the public "
+                   "deployment.")
+        st.markdown(card(
+            badge("LOCAL ONLY", "info"),
+            '<div class="cci-note" style="margin-top:8px">This panel publishes a real '
+            'GitHub commit status and writes a real Slack engineering case, using the '
+            'credentials in this shell. Nothing runs until the button is pressed.</div>',
+            kind="plain"), unsafe_allow_html=True)
+        st.markdown(theme.spacer(14), unsafe_allow_html=True)
+
+        entry, action = st.columns([1, 2])
+        with entry:
+            pr_reference = st.text_input(
+                "Pull request", value="", placeholder="for example 7",
+                key="operator_pr",
+                help="A number, an owner/repo#number reference, or the full URL.")
+            triggered = st.button("Run ClauseCI", type="primary",
+                                  key="operator_run", width="stretch")
+
+        if not triggered:
+            st.caption("Nothing has run. The workflow starts only when you press the "
+                       "button.")
+            return
+
+        try:
+            reference = operator.parse_pr(pr_reference)
+        except operator.OperatorError as exc:
+            st.error(str(exc))
+            return
+
+        phases = {
+            "analysis": st.status("Reading and deciding", expanded=True),
+            "plan": st.status("Planning the external effects", expanded=False),
+            "execute": st.status("Publishing and verifying", expanded=True),
+        }
+
+        def on_phase(phase: str, state: str) -> None:
+            box = phases[phase]
+            if state == "running":
+                box.update(state="running")
+                return
+            box.update(state="complete")
+            if phase == "analysis":
+                for stage in operator.READ_AND_DECIDE:
+                    box.write(f"{stage} &check;")
+            elif phase == "execute":
+                for stage in operator.WRITE_AND_VERIFY:
+                    box.write(f"{stage} &check;")
+
+        try:
+            with st.spinner("Running the authenticated workflow"):
+                result = operator.run(reference, on_phase=on_phase)
+        except operator.OperatorError as exc:
+            for box in phases.values():
+                box.update(state="error")
+            st.error(str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - the operator must never show a traceback
+            for box in phases.values():
+                box.update(state="error")
+            st.error(f"The run stopped. `{type(exc).__name__}`: {exc}")
+            print(f"ClauseCI operator: run failed: {type(exc).__name__}: {exc}", flush=True)
+            return
+
+        st.caption("Stages are reported once the phase that performs them returned. "
+                   "Nothing above is a timed animation.")
+        st.markdown(theme.spacer(10), unsafe_allow_html=True)
+
+        conflicted = result.decision == "CONFLICT"
+        verified = result.execution_state == "VERIFIED"
+
+        one, two, three = st.columns(3)
+        one.markdown(card(
+            field("Decision", badge(result.decision, "bad" if conflicted else "good")),
+            f'<div class="cci-note" style="margin-top:7px">{result.decision_reason}</div>',
+            kind="bad" if conflicted else "good"), unsafe_allow_html=True)
+        two.markdown(card(
+            field("Analyzed commit", result.head_sha[:8], mono=True),
+            f'<div class="cci-note" style="margin-top:7px">{result.repository} '
+            f'pull request #{result.pr_number}</div>'), unsafe_allow_html=True)
+        three.markdown(card(
+            field("Execution receipt",
+                  badge(result.execution_state, "good" if verified else "flat")),
+            f'<div class="cci-note" style="margin-top:7px">Freshness '
+            f'{result.freshness}. {result.verification_summary}</div>',
+            kind="good" if verified else ""), unsafe_allow_html=True)
+
+        st.markdown(theme.spacer(14), unsafe_allow_html=True)
+        github_col, slack_col = st.columns(2)
+        github_col.markdown(card(
+            '<div class="cci-label">GitHub</div>',
+            '<div style="margin-top:6px">'
+            + badge(result.github_state or "not written",
+                    "bad" if result.github_state == "failure" else "good") + '</div>',
+            f'<div class="cci-note" style="margin-top:8px">Required check '
+            f'<span class="cci-mono">{result.github_context or "n/a"}</span><br>'
+            f'Read back: <b>{result.github_verification or "not attempted"}</b></div>',
+        ), unsafe_allow_html=True)
+        slack_col.markdown(card(
+            '<div class="cci-label">Slack</div>',
+            '<div style="margin-top:6px">'
+            + badge(result.slack_action or "not written", "info") + '</div>',
+            f'<div class="cci-note" style="margin-top:8px">Engineering case in the '
+            f'configured alert channel.<br>Read back: '
+            f'<b>{result.slack_verification or "not attempted"}</b></div>',
+        ), unsafe_allow_html=True)
+
+        if result.preferred_candidate and result.preferred_values:
+            scoped = " &nbsp;·&nbsp; ".join(
+                f"{ENTITY.get(customer_id, customer_id).split()[0]} "
+                f"<b>{categories.get('application_logs')}</b>"
+                for customer_id, categories in sorted(result.preferred_values.items()))
+            st.markdown(theme.spacer(14), unsafe_allow_html=True)
+            st.markdown(card(
+                '<div class="cci-label">Correction ClauseCI proposed</div>',
+                f'<div class="cci-value" style="margin-top:6px">{scoped}</div>',
+                f'<div class="cci-note" style="margin-top:8px">Candidate '
+                f'{result.preferred_candidate}. {result.preferred_description}. '
+                f'ClauseCI hands it to a developer to apply.</div>',
+                kind="pref"), unsafe_allow_html=True)
+
+        st.markdown(theme.spacer(14), unsafe_allow_html=True)
+        st.link_button(
+            "Open the pull request on GitHub",
+            f"https://github.com/{result.repository}/pull/{result.pr_number}")
+        st.link_button(
+            "Open the analyzed commit on GitHub",
+            f"https://github.com/{result.repository}/commit/{result.head_sha}")
+        st.caption("No Slack deep link is shown. It would have to carry the raw "
+                   "channel id and message timestamp, and those stay out of the "
+                   "interface. Open the alert channel in Slack instead.")
+
+        if result.notes:
+            with st.expander("Execution notes"):
+                for note in result.notes:
+                    st.write(f"- {note}")
+
+
 def findings_by_customer(analysis: dict) -> dict:
     table: dict[str, dict] = {}
     for finding in analysis["findings"]:
@@ -211,7 +360,7 @@ def main() -> None:
     correction = evidence["correction"]
     preferred = next(c for c in unsafe["candidates"]
                      if c["candidate_id"] == unsafe["preferred_candidate_id"])
-    regression_tests = 455
+    regression_tests = 474
 
     # Customer impact, derived from the recorded evidence rather than written in
     # by hand, so the headline numbers cannot drift away from the run.
@@ -267,8 +416,18 @@ def main() -> None:
         'credentials.</div>', unsafe_allow_html=True)
     st.divider()
 
-    overview, decision_tab, reliability_tab, evaluation_tab, architecture_tab = st.tabs(
-        ["Overview", "Decision", "Reliability", "Evaluation", "Architecture"])
+    # The live operator tab exists only in a local operator shell. On the public
+    # deployment the label is never added and render_operator is never called.
+    tab_labels = ["Overview", "Decision", "Reliability", "Evaluation", "Architecture"]
+    operator_mode = operator.enabled()
+    if operator_mode:
+        tab_labels.append("Live operator")
+
+    rendered_tabs = st.tabs(tab_labels)
+    overview, decision_tab, reliability_tab, evaluation_tab, architecture_tab = \
+        rendered_tabs[:5]
+    if operator_mode:
+        render_operator(rendered_tabs[5], evidence)
 
 
     # ─────────────────────────────────────────────────────────── overview

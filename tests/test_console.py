@@ -555,7 +555,12 @@ def test_pres04_capabilities_are_presented_before_boundaries():
 
 def test_pres05_no_capability_section_leads_with_what_the_product_declines():
     """A negative about ClauseCI may appear only inside Safety boundaries."""
-    before_bounds = CONSOLE_TEXT[:CONSOLE_TEXT.index("### Safety boundaries")]
+    # The public presentation only. The local operator panel is not part of it
+    # and never renders on the deployment.
+    public = CONSOLE_TEXT.replace(
+        CONSOLE_TEXT[CONSOLE_TEXT.index("def render_operator"):
+                     CONSOLE_TEXT.index("\ndef findings_by_customer")], "")
+    before_bounds = public[:public.index("### Safety boundaries")]
     offenders = re.findall(
         r"ClauseCI (?:does not|did not|cannot|can not|will not|never)[^<\"']*",
         before_bounds)
