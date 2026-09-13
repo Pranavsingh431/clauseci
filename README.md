@@ -7,8 +7,11 @@ that govern each customer, detects contract specific release conflicts, proposes
 a customer scoped correction, publishes the required GitHub check, maintains the
 Slack engineering case, and verifies the workflow after correction.
 
-**Live interactive demo:
-[clauseci.streamlit.app](https://clauseci-2jfpnwaqmsyjncrph7ythl.streamlit.app/)**
+**Live interactive demo:**
+https://clauseci-2jfpnwaqmsyjncrph7ythl.streamlit.app/
+
+**2-minute demo:**
+https://youtu.be/DaPaS8VFcYM
 
 ## The example
 
@@ -52,15 +55,66 @@ verified the new commit and closed the workflow.**
 
 ## What ClauseCI does
 
-1. Reads a pull request and resolves the **effective** retention value for every
-   customer, so a change to one default is visible as a change to three accounts.
-2. Reads the signed agreements from Google Drive and extracts the controlling
-   obligation, with the clause quoted.
-3. Decides deterministically, publishes a commit status under
-   `ClauseCI / retention-compliance`, and opens one Slack engineering case.
-4. Reads both providers back and checks the fields before calling anything done.
-5. Proposes a correction for a developer to apply, then verifies the result and
-   resolves the same case.
+ClauseCI is a customer aware release decision agent for B2B SaaS. One run does
+all of this:
+
+1. **Reads a proposed GitHub configuration change**, bound to the exact commit.
+2. **Resolves the effective configuration per customer**, so a change to one
+   default is visible as a change to three accounts.
+3. **Reads the governing agreements from Google Drive**, read only.
+4. **Interprets contract language into typed obligations**, each carrying a
+   verbatim quote that must actually state the number being claimed.
+5. **Detects customer specific release conflicts** against those obligations.
+6. **Proposes a scoped correction** that keeps the request wherever the
+   agreements permit it, instead of rolling everyone back.
+7. **Publishes the GitHub release check** under
+   `ClauseCI / retention-compliance`.
+8. **Maintains the engineering case in Slack**, one case across the lifecycle.
+9. **Verifies external provider state** by reading GitHub and Slack back and
+   comparing the fields before anything is called done.
+
+## External apps used
+
+Three external applications carry the workflow. A fourth, OpenRouter, is the
+model API and is described separately below.
+
+### GitHub
+
+- Read the pull request and the exact commit SHA under review.
+- Inspect the configuration changes the pull request proposes.
+- Publish the required commit status `ClauseCI / retention-compliance`.
+- Bind the release decision to the analyzed commit, so a later commit never
+  inherits an earlier verdict.
+
+The unsafe commit keeps its failing check permanently. A corrected commit earns
+its own.
+
+### Google Drive
+
+- Read the customer agreement corpus.
+- Obtain the contract evidence the semantic analyzer works from.
+- Provide read only source material, including the digest each decision is
+  bound to.
+
+**ClauseCI does not mutate Google Drive.** The OAuth scope is `drive.readonly`,
+so no write is possible, and the evaluation records zero Drive mutations.
+
+### Slack
+
+- Create one engineering case when a conflict is found.
+- Update that same case through the lifecycle.
+- Resolve that same case when the corrected commit passes.
+- Verify the external state by reading the message back and comparing every
+  meaningful field.
+
+One case spans both commits. Duplicate root cases measured: zero.
+
+### OpenRouter
+
+The model API used for one thing only: interpreting contract language into
+typed obligations. The model is given no tools, so it cannot write a status,
+post a message or call an API. Everything that controls a release decision or
+an external action is deterministic code.
 
 ## Why this needs an AI agent
 
@@ -124,7 +178,26 @@ predicates, for one recorded configuration and one recorded source snapshot.
   commits. A developer applies the correction. A test greps the runtime
   package to keep it that way.
 
-## Reliability model
+## Reliability and evaluation
+
+### What was tested
+
+ClauseCI was tested across ten areas, not only on whether it gets the answer
+right:
+
+- semantic interpretation of heterogeneous contract language
+- deterministic release decisions
+- false greens on unsafe or unresolved cases
+- safe case completion
+- lost response recovery
+- restart reconciliation
+- stale SHA handling
+- duplicate Slack case prevention
+- provider read back verification
+- the full multi app lifecycle
+
+### How it behaves under uncertainty
+
 
 ClauseCI records intended effects before execution and reconciles uncertain
 writes against provider state before retrying. **This is not exactly once
@@ -137,7 +210,11 @@ adopts what is already there. A restart finds the unfinished effect and leaves
 exactly one Slack case. Freshness is rechecked before the first write, between
 writes, and again before sealing.
 
-## Evaluation
+In short: ClauseCI records intended external effects before writing them,
+treats uncertain outcomes conservatively, reads provider state back, and
+reconciles an existing effect instead of blindly duplicating it.
+
+### Measured results
 
 Measured, from `evals/results/latest-summary.json`, which is generated from raw
 records. No number below was typed by hand.
@@ -170,14 +247,47 @@ Separately, the repository has **474 engineering regression tests** passing.
 That is engineering evidence, not an evaluation score, and the two are never
 added together.
 
-## Quick start
+## Setup
+
+### The public evidence console needs nothing
+
+The deployed site at
+https://clauseci-2jfpnwaqmsyjncrph7ythl.streamlit.app/ requires **zero provider
+credentials**. It reads sanitized evidence committed to this repository, holds
+no token, and cannot write anywhere. To run that same console locally:
 
 ```bash
 python3 -m venv .venv
 ./.venv/bin/pip install -r requirements.txt
+./.venv/bin/streamlit run streamlit_app.py
+```
+
+No `.env` is needed for that. The interactive release sandbox on the Overview
+tab runs the real deterministic decision engine over the captured obligations,
+still with no credentials.
+
+### Read only analysis mode
+
+Analysis reads GitHub, reads Google Drive and calls the model. **It writes
+nothing.**
+
+```bash
 cp .env.example .env        # then fill in your own credentials
 ./.venv/bin/python -m pytest tests/ -q
+./.venv/bin/python -m clauseci.run --pr 1
 ```
+
+### Authenticated execution mode
+
+Execution additionally publishes a GitHub commit status and creates or updates
+one Slack engineering case, then reads both back. `--execute` is the only path
+to a provider write.
+
+```bash
+./.venv/bin/python -m clauseci.run --pr 1 --execute
+```
+
+Google Drive stays read only in both modes.
 
 ## Environment variables
 
@@ -230,7 +340,7 @@ and Google Drive stays read only.
 ## Evidence console
 
 ```bash
-./.venv/bin/streamlit run ui/console.py
+./.venv/bin/streamlit run streamlit_app.py
 ```
 
 Reads captured evidence from disk first, so it stays useful when a provider is
@@ -269,6 +379,12 @@ slow. Current provider state is an optional refresh and is labelled separately.
   writes read as uncertain. That is the conservative direction.
 - ClauseCI checks configuration, not the running system. It does not verify that
   production actually deleted anything.
+
+## Submission links
+
+- **Live interactive demo:** https://clauseci-2jfpnwaqmsyjncrph7ythl.streamlit.app/
+- **2-minute demo:** https://youtu.be/DaPaS8VFcYM
+- **Demo pull request:** https://github.com/Pranavsingh431/clauseci-demo-saas/pull/1
 
 ## Repository structure
 
