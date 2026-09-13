@@ -10,6 +10,10 @@ google-auth==2.42.1
 google-auth-oauthlib==1.2.2
 slack-sdk==3.36.0                 # Slack Web API
 
+# --- Configuration and tests ---
+PyYAML==6.0.2                     # retention config parsing
+pytest==8.4.2                     # effective configuration resolution tests
+
 # --- Documents ---
 pypdf==6.14.2                     # contract text extraction
 reportlab==4.4.4                  # generate demo contract PDFs (prep only)

@@ -1,0 +1,50 @@
+# Trusted customer registry.
+#
+# This file is runtime input. It answers one question only: which stable
+# customer identity does a configuration key or a contract document belong to.
+#
+# It deliberately does NOT contain:
+#   - any contractual retention cap
+#   - any expected pass or fail result
+#   - any precomputed analysis output
+#
+# Caps are read from the contract documents at analysis time. Putting them here
+# would mean the agent was grading its own answer key.
+
+registry_version: 1
+
+customers:
+  - customer_id: acme-corp
+    legal_entity_name: "Acme Corporation"
+    jurisdiction: "Delaware, USA"
+    config_key: acme-corp
+    # Distinct legal entity from acme-labs. See 08_AcmeLabs_MSA_2026.pdf
+    # section 0.1, which states the two are unaffiliated.
+    not_affiliated_with: [acme-labs]
+    # Every document that belongs to this customer. Eligibility is about
+    # ownership, not authority. Superseded, unsigned and adversarial documents
+    # are listed here on purpose. Deciding which one controls is the analyzer's
+    # job, not the registry's.
+    eligible_documents:
+      - 01_Acme_MSA_2025.pdf
+      - 02_Acme_DPA_2025.pdf
+      - 03_Acme_DPA_Amendment_2026_SIGNED.pdf
+      - 06_Acme_DPA_Amendment_2026_UNSIGNED_DRAFT.pdf
+      - 07_Acme_Security_Addendum_2026.pdf
+
+  - customer_id: globex
+    legal_entity_name: "Globex International Ltd."
+    jurisdiction: "England and Wales"
+    config_key: globex
+    not_affiliated_with: []
+    eligible_documents:
+      - 04_Globex_MSA_2026.pdf
+      - 05_Globex_DPA_2026.pdf
+
+  - customer_id: acme-labs
+    legal_entity_name: "Acme Labs Pvt Ltd"
+    jurisdiction: "Bengaluru, India"
+    config_key: acme-labs
+    not_affiliated_with: [acme-corp]
+    eligible_documents:
+      - 08_AcmeLabs_MSA_2026.pdf

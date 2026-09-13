@@ -1,0 +1,34 @@
+# Northwind Platform, data retention policy.
+# All values are in days.
+#
+# Resolution order for any (customer, field):
+#   1. the value under customers.<id>, if present
+#   2. otherwise the value under defaults
+#
+# Several of these values are constrained per customer by signed agreements.
+# Raising a default therefore changes behaviour for every tenant that does not
+# pin its own override.
+
+defaults:
+  application_logs_days: 30
+  diagnostic_logs_days: 30
+  audit_logs_days: 30
+  backup_retention_days: 7
+
+customers:
+  acme-corp:
+    display_name: "Acme Corporation"
+    # application, diagnostic and audit all inherit from defaults.
+    backup_retention_days: 7
+
+  globex:
+    display_name: "Globex International Ltd."
+    # application and diagnostic inherit from defaults.
+    audit_logs_days: 365
+    backup_retention_days: 30
+
+  acme-labs:
+    display_name: "Acme Labs Pvt Ltd"
+    # application and diagnostic inherit from defaults.
+    audit_logs_days: 180
+    backup_retention_days: 30

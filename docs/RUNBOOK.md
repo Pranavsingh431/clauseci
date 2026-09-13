@@ -1,4 +1,4 @@
-# ClauseCI — build-day runbook
+# ClauseCI build day runbook
 
 **Window:** Sun 13 Sep 2026, 09:30–16:00 PT  =  **22:00 IST Sun → 04:30 IST Mon**
 Judging 16:00–16:40 PT (04:30–05:10 IST) · Awards to 17:00 PT (05:30 IST)
@@ -21,7 +21,7 @@ All green, or fix before anything else. Then read `docs/ARCHITECTURE.md` once.
 
 | PT | IST | Block | Done when |
 |----|-----|-------|-----------|
-| 09:45–10:15 | 22:15–22:45 | Skeleton: `clauseci/{config,github_app,drive_app,slack_app,gmail_app,llm,kernel,verify,run}.py`. Lift the working API calls straight out of `prep/smoke/smoke.py`. | `python -m clauseci.run --pr 2` prints PR diff + contract list |
+| 09:45–10:15 | 22:15–22:45 | Skeleton: `clauseci/{config,github_app,drive_app,slack_app,llm,kernel,verify,run}.py`. Lift the working API calls straight out of `prep/smoke/smoke.py`. | `python -m clauseci.run --pr 2` prints PR diff + contract list |
 | 10:15–11:15 | 22:45–23:45 | **[2] CapabilityAnalyzer** + **[3] DriveReader** with on-disk text cache | structured `{capabilities, candidate_customers}` for PRs 1–5 |
 | 11:15–12:30 | 23:45–01:00 | **[4] ObligationAnalyzer** → `ActionPlan` w/ verbatim clause quotes | PR #1 yields Acme/30-day/violation; PR #2 yields empty plan |
 | 12:30–13:30 | 01:00–02:00 | **[5] Kernel** (bind, authz, dedupe) + 3 executors + **[6] Verifier** | PR #1 end-to-end: red check, 1 Slack msg, 1 unsent draft, receipt `verified=true` |
@@ -49,18 +49,18 @@ All green, or fix before anything else. Then read `docs/ARCHITECTURE.md` once.
 1. Streamlit dashboard → fall back to rich terminal output
 2. T10 / T09 scenarios → keep T01–T08, T13–T15
 3. PR #4 deprecation case → keep retention + residency + sub-processor
-4. Gmail → **never cut**; the unsent draft is the strongest reliability beat
+4. Verification must **never** be cut. Reading provider state back is the reliability claim.
 
 ## Demo script (2:00)
 
 | t | Screen | Say |
 |---|--------|-----|
 | 0:00 | GitHub PR #1 diff | "Reasonable change. 30→90 day log retention. It also silently breaches an enterprise customer's signed DPA." |
-| 0:15 | ClauseCI running; Drive folder visible with 8 contracts | "It reads the diff, then the actual signed agreements. Three Acme documents disagree — one superseded, one signed, one unsigned draft." |
+| 0:15 | ClauseCI running; Drive folder visible with 8 contracts | "It reads the diff, then the actual signed agreements. Three Acme documents disagree: one superseded, one signed, one unsigned draft." |
 | 0:40 | GitHub check goes **red** | "Blocked. Acme Corporation, Amendment No.1 §2.1, 30 days. With the clause quoted and the document named." |
 | 0:55 | Slack escalation | "One escalation. Evidence, not a vibe." |
-| 1:10 | Gmail **DRAFT** | "Customer notice prepared — and unsent. The agent has no send-email tool. Not a prompt instruction: the tool does not exist." |
+| 1:10 | The other two tenants | "Globex asked for 90 and is allowed 90. Acme Labs is a different legal entity with a different cap. Neither is flagged." |
 | 1:25 | `apply_remediation.sh` → re-run → check goes **green** | "Developer pins Acme back to 30. New SHA, full re-evaluation. Same thread updated. No duplicate email." |
-| 1:42 | Eval table | "15 adversarial scenarios, 3 runs each. Every pass is verified by reading GitHub, Slack and Gmail back — never by asking the model whether it succeeded." |
+| 1:42 | Eval table | "14 scenarios, 3 runs each. Every pass is verified by reading GitHub and Slack back, never by asking the model whether it succeeded." |
 
 No architecture slide. The diagram goes in the README.
