@@ -66,8 +66,17 @@ DECISION_POLICY_VERSION = "scoped-retention-decision-1.0.0"
 EXECUTION_POLICY_VERSION = "bounded-execution-1.0.0"
 
 # Shape of the serialized ExecutionReceipt.
-RECEIPT_SCHEMA_VERSION = "1.0.0"
+RECEIPT_SCHEMA_VERSION = "2.0.0"  # Phase 6 added journal and reconciliation fields
 
 # Namespace for stable case identity. Keeps demo cases separate from anything
 # else that might later share a repository.
 CASE_NAMESPACE = "clauseci-demo"
+
+
+# ---------------------------------------------------------------- Phase 6
+# Schema of the local SQLite journal. A mismatch fails loudly rather than
+# silently reading a database written by different code.
+JOURNAL_SCHEMA_VERSION = 1
+
+# How uncertain effects are reconciled against provider state.
+RECONCILIATION_POLICY_VERSION = "readback-reconcile-1.0.0"

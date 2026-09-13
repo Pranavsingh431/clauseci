@@ -38,8 +38,17 @@ Both providers are then read back and checked field by field. The run is only
 recorded as verified when both match. Google Drive stays read only and Gmail is
 not used.
 
-The evaluation runner is not built yet, and neither is durable reconciliation
-across restarts.
+Every intended effect is written to a local journal before the provider is
+called. If a write lands but the response is lost, the effect is recorded as
+UNKNOWN rather than guessed at, and the next run reconciles it against provider
+state instead of posting again. A restart finds the unfinished effect, adopts the
+real Slack case, and leaves exactly one.
+
+This is not exactly once, and does not claim to be. It is: intent recorded before
+action, uncertainty kept as uncertainty, and no blind retry when a prior outcome
+cannot be established.
+
+The evaluation runner is not built yet.
 
 See `BUILD_START_REPORT.md` for exactly what existed before the build window
 opened, and what is being built during it.
@@ -95,6 +104,11 @@ clauseci/                    runtime package
   adapters/slack_write.py    one engineering case, nothing else
   domain/execution.py        plan, action policy, receipt
   domain/case_message.py     the Slack case and the fields verification checks
+  journal.py                 durable SQLite journal of cases, analyses and effects
+  reconcile.py               resolving uncertain effects against provider state
+  domain/effects.py          effect keys and the effect state machine
+  state.py                   journal inspection and manual reconciliation
+  faults.py                  deterministic fault injection, test use only
   domain/decision.py         decision states, dispositions, the predicate
   domain/candidates.py       three correction constructors and ranking
   domain/rendering.py        patch rendering, verified by re-parsing
@@ -193,6 +207,13 @@ Run the whole workflow. Read only unless you ask for writes.
 ```bash
 ./.venv/bin/python -m clauseci.run --pr 1              # analyse and print, writes nothing
 ./.venv/bin/python -m clauseci.run --pr 1 --execute    # publish to GitHub and Slack
+```
+
+Inspect what was intended and what was confirmed, or resolve anything left open.
+
+```bash
+./.venv/bin/python -m clauseci.state inspect --pr 1
+./.venv/bin/python -m clauseci.state reconcile --pr 1
 ```
 
 `check.sh` verifies every provider integration, including Gmail. Unlike the

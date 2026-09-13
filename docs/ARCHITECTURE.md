@@ -426,6 +426,99 @@ Gmail is verified infrastructure and is not part of this workflow.
     python -m clauseci.run --pr <pull request URL>
     python -m clauseci.run --pr <pull request URL> --execute
 
+## Reliability model
+
+The honest statement of what this gives you:
+
+> ClauseCI records intended effects before execution, reconciles uncertain
+> writes against provider state, and refuses blind retries when a prior outcome
+> cannot be established.
+
+It is not exactly once. There is no distributed transaction and no atomic commit
+across two providers. Those things are not available here and are not claimed.
+
+### Stable case, versioned analysis
+
+A case is one engineering conversation about one pull request. Its id comes from
+the namespace, the repository and the pull request number, and **never** the head
+SHA, so a new commit continues the same case. One case holds many analyses. An
+analysis id moves with the head SHA, the corpus digest and every version that
+could change the answer.
+
+### Intent before action
+
+Before any provider is called, the intended effect is written to a local SQLite
+journal and committed. The effect key is derived from the case, the analysis, the
+provider, the action, the target and the digest of the intended payload. The same
+intent always derives the same key, and a changed payload derives a different one.
+
+That ordering is the point. If the process dies between the intent and the
+confirmation, the intent is still on disk and the next run goes and looks at the
+provider instead of guessing.
+
+### Effect states
+
+`PLANNED`, `IN_FLIGHT`, `VERIFIED`, `UNKNOWN`, `FAILED`, `SUPERSEDED`, with an
+explicit transition table. Illegal transitions raise rather than being written.
+`VERIFIED`, `FAILED` and `SUPERSEDED` are terminal. Leaving `IN_FLIGHT` for
+`SUPERSEDED` needs the caller to state that the external outcome is independently
+understood.
+
+A `PLANNED` effect never reached the provider, so it is never marked `UNKNOWN`.
+Untried is not uncertain.
+
+### The write before confirmation risk
+
+The dangerous window is between the provider accepting a write and this process
+recording it. A crash there leaves a real external change with no local record.
+
+When that happens the effect is `UNKNOWN`, which is never collapsed into
+`FAILED`. The difference decides whether a retry is safe, so the distinction is
+kept even though it makes the output less tidy.
+
+### Reconciliation
+
+On the next run, unfinished effects are inspected against provider state. Bounded
+by local state, never by sweeping provider history.
+
+For Slack, identity resolution is ordered. The stored resource id is the normal
+path, because it is an exact lookup. The channel search by case marker is
+**recovery**, used when the id was never recorded. One match is adopted. Zero
+means the write did not land. More than one is ambiguity, and ClauseCI refuses to
+add a third and asks for a person.
+
+For GitHub, commit statuses are history bearing and several records in one
+context are normal, so uniqueness is not enforced. What is checked is whether the
+latest record in the context already equals the intended state. If it does the
+effect is adopted rather than written again, which is what stops a restart loop
+appending an endless column of identical statuses. A genuinely new intent, with a
+different payload, still appends a new record.
+
+### Three freshness boundaries
+
+Before the first effect, between effects, and again before sealing. If the head
+or the corpus moved before anything was written, nothing is written at all. If it
+moved after an effect landed, that effect stays in the audit record and the
+workflow is `SUPERSEDED`. It is never reported as a current verified result, and
+the Slack case continues to show the SHA it actually analyzed.
+
+### Human edits
+
+Before updating an existing case, the current text is compared against the last
+payload ClauseCI verified and against the new intended payload. If it matches
+neither, a person has edited it and ClauseCI refuses rather than overwriting
+content it did not write. There is no merge algorithm, deliberately.
+
+### Concurrency
+
+One local lock row per case, taken with an immediate transaction. A second local
+process cannot execute the same case at the same time. A lock past its expiry is
+taken over, so a crashed process cannot block a case forever. This is a local
+lock. It does not attempt distributed coordination.
+
+    python -m clauseci.state inspect --pr 1
+    python -m clauseci.state reconcile --pr 1
+
 ## Model routing
 
 Verified working on OpenRouter with strict JSON schema output.

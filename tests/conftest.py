@@ -39,3 +39,20 @@ def requested():
 def correction():
     from clauseci.config_resolution import load_retention_config
     return load_retention_config(FIXTURES / "retention_correction.yaml")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _never_touch_the_real_journal(tmp_path_factory):
+    """
+    Point the default journal path at a throwaway directory for the whole run.
+
+    A test that forgets to pass its own journal would otherwise write fake
+    provider resource ids into the real runtime database. That happened once,
+    and this makes it impossible rather than unlikely.
+    """
+    import clauseci.journal as journal_module
+
+    original = journal_module.DEFAULT_DB_PATH
+    journal_module.DEFAULT_DB_PATH = tmp_path_factory.mktemp("journal") / "test.sqlite3"
+    yield
+    journal_module.DEFAULT_DB_PATH = original

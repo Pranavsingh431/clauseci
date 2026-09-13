@@ -65,8 +65,12 @@ DEFAULT = object()
 
 
 def make_workflow(bundle, status_writer=DEFAULT, slack_writer=DEFAULT,
-                  github_reader=None, drive=None):
+                  github_reader=None, drive=None, journal=None, faults=None):
+    from clauseci.faults import NO_FAULTS
+    from clauseci.journal import Journal
     return Workflow(
+        journal=journal or Journal(":memory:"),
+        faults=faults or NO_FAULTS,
         settings=None,
         registry=load_registry(),
         github_reader=github_reader or FakeGitHubReader(),
@@ -254,10 +258,12 @@ def test_e14_an_existing_case_is_updated_not_duplicated():
     plan = workflow.build_plan(bundle)
 
     workflow.execute(bundle, plan)
-    workflow.execute(bundle, plan)
+    second = workflow.execute(bundle, plan)
 
     assert slack.posts == 1, "a second root case must not be created"
-    assert slack.updates == 1
+    # the journal already holds this exact intent as verified, so the repeat
+    # adopts it rather than rewriting a case a person may be reading
+    assert second.slack_effect.action == "already_verified"
     assert len(slack.find_case_by_marker(plan.slack_effect.marker)) == 1
 
 
@@ -274,7 +280,7 @@ def test_e15_multiple_matching_cases_produce_an_explicit_error():
     assert slack.posts == 0, "it must not add a third"
     assert receipt.execution_state is ExecutionState.FAILED
     assert "2 root cases" in receipt.slack_effect.error
-    assert "a human must resolve" in receipt.slack_effect.error
+    assert "a person must resolve" in receipt.slack_effect.error
 
 
 # ------------------------------------------------------------- E16 and E17
@@ -359,7 +365,10 @@ def test_e20_read_back_with_the_wrong_state_fails_verification():
     receipt = workflow.execute(bundle)
     assert receipt.github_effect.verification_state is VerificationState.MISMATCHED
     assert any("expected 'failure'" in m for m in receipt.github_effect.mismatches)
-    assert receipt.execution_state is ExecutionState.PARTIAL
+    # Phase 6: a write that read back wrong leaves the real outcome unestablished,
+    # so the honest state is UNKNOWN rather than a confident PARTIAL
+    assert receipt.execution_state is ExecutionState.UNKNOWN
+    assert receipt.github_effect.journal_state == "UNKNOWN"
 
 
 def test_e21_a_case_without_the_marker_fails_verification():
@@ -370,7 +379,7 @@ def test_e21_a_case_without_the_marker_fails_verification():
     receipt = workflow.execute(bundle)
     assert receipt.slack_effect.verification_state is VerificationState.MISMATCHED
     assert any("case_marker" in m for m in receipt.slack_effect.mismatches)
-    assert receipt.execution_state is ExecutionState.PARTIAL
+    assert receipt.execution_state is ExecutionState.UNKNOWN
 
 
 def test_e22_a_case_naming_the_wrong_customer_fails_verification():
@@ -418,7 +427,8 @@ def test_e24_github_success_with_slack_failure_cannot_be_verified():
     assert receipt.github_effect.matched is True
     assert receipt.slack_effect.matched is False
     assert receipt.execution_state is not ExecutionState.VERIFIED
-    assert receipt.execution_state is ExecutionState.PARTIAL
+    # the Slack outcome could not be established, so the run is UNKNOWN
+    assert receipt.execution_state is ExecutionState.UNKNOWN
 
 
 def test_e24_a_slack_error_makes_the_workflow_failed():
@@ -431,7 +441,10 @@ def test_e24_a_slack_error_makes_the_workflow_failed():
     slack.post_case = refuse
     workflow = make_workflow(bundle, slack_writer=slack)
     receipt = workflow.execute(bundle)
-    assert receipt.execution_state is ExecutionState.FAILED
+    # a raised call cannot prove the provider did not receive it, so the effect
+    # is UNKNOWN and the next run reconciles instead of blindly posting again
+    assert receipt.execution_state is ExecutionState.UNKNOWN
+    assert receipt.slack_effect.journal_state == "UNKNOWN"
     assert receipt.github_effect.matched is True
 
 

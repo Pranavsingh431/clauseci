@@ -19,6 +19,7 @@ from pathlib import Path
 from clauseci.decide import ReleaseDecision, decide
 from clauseci.domain.case_message import expected_fields, render_case
 from clauseci.domain.decision import DecisionState
+from clauseci.domain.digests import canonical_json
 from clauseci.domain.execution import (
     EffectRecord,
     ExecutionPlan,
@@ -33,12 +34,28 @@ from clauseci.domain.execution import (
     build_execution_plan,
     payload_digest,
 )
+from clauseci.domain.effects import EffectState, build_effect_key
 from clauseci.domain.models import AnalysisSnapshot
 from clauseci.domain.obligations import ObligationAnalysis
+from clauseci.faults import (
+    NO_FAULTS,
+    FaultPoint,
+    InjectedFailure,
+    InjectedResponseLoss,
+)
+from clauseci.journal import Journal, LockNotAcquired
+from clauseci.reconcile import (
+    ReconciliationOutcome,
+    reconcile_github_status,
+    reconcile_slack_case,
+    reconcile_unfinished_effects,
+)
 from clauseci.settings import ROOT, SUPPORTED_RETENTION_PATHS
 from clauseci.versions import (
+    CASE_NAMESPACE,
     DECISION_POLICY_VERSION,
     EXECUTION_POLICY_VERSION,
+    RECONCILIATION_POLICY_VERSION,
     RETENTION_STATUS_CONTEXT,
 )
 
@@ -76,6 +93,8 @@ class Workflow:
         slack_writer=None,
         semantic_client=None,
         cache=None,
+        journal: Journal | None = None,
+        faults=NO_FAULTS,
         config_path: str = SUPPORTED_RETENTION_PATHS[0],
     ) -> None:
         self.settings = settings
@@ -87,6 +106,8 @@ class Workflow:
         self.slack_writer = slack_writer
         self.semantic_client = semantic_client
         self.cache = cache
+        self.journal = journal
+        self.faults = faults
         self.config_path = config_path
 
     # ------------------------------------------------------------- analysis
@@ -209,70 +230,261 @@ class Workflow:
         )
 
     def execute(self, bundle: AnalysisBundle, plan: ExecutionPlan | None = None) -> ExecutionReceipt:
-        """Carry out the plan, then read both providers back and verify."""
+        """
+        Carry out the plan under a local case lock, recording intent first.
+
+        Order: lock, record case and analysis, freshness, reconcile anything
+        left unfinished by an earlier run, GitHub effect, freshness again,
+        Slack effect, freshness once more, then seal.
+        """
         started_at = datetime.now(timezone.utc)
         plan = plan or self.build_plan(bundle)
         snapshot = bundle.snapshot
         owner, repo = snapshot.repository.split("/")
         notes: list[str] = []
 
-        freshness, freshness_reason = self.recheck_freshness(bundle)
+        journal = self.journal or Journal()
+        # the case exists whoever ends up executing, and a receipt cannot be
+        # recorded against a case row that is not there
+        journal.upsert_case(
+            case_id=plan.case_id, namespace=CASE_NAMESPACE,
+            repository_full_name=snapshot.repository,
+            repository_id=snapshot.repository_id, pr_number=snapshot.pr_number,
+        )
+        try:
+            with journal.case_lock(plan.case_id):
+                return self._execute_locked(
+                    journal, bundle, plan, owner, repo, started_at, notes
+                )
+        except LockNotAcquired as exc:
+            notes.append(str(exc))
+            return self._seal(
+                plan, bundle, started_at, ExecutionState.FAILED, FreshnessState.FRESH,
+                github=None, slack=None,
+                summary="another local execution owns this case, so nothing was written",
+                notes=tuple(notes), journal=journal,
+            )
+
+    def _execute_locked(self, journal, bundle, plan, owner, repo, started_at, notes):
+        snapshot = bundle.snapshot
+        analysis = bundle.analysis
+
+        journal.upsert_case(
+            case_id=plan.case_id, namespace=CASE_NAMESPACE,
+            repository_full_name=snapshot.repository,
+            repository_id=snapshot.repository_id, pr_number=snapshot.pr_number,
+        )
+        journal.record_analysis(
+            analysis_id=plan.analysis_id, case_id=plan.case_id,
+            base_sha=snapshot.base_sha, head_sha=snapshot.head_sha,
+            corpus_digest=snapshot.corpus_digest,
+            snapshot_schema_version=snapshot.snapshot_schema_version,
+            parser_version=snapshot.parser_version,
+            policy_version=snapshot.policy_version,
+            semantic_model=analysis.metadata.model,
+            semantic_prompt_version=analysis.metadata.prompt_version,
+            semantic_schema_version=analysis.metadata.schema_version,
+            decision_policy_version=DECISION_POLICY_VERSION,
+            decision=plan.actual_decision.value,
+        )
+
+        # boundary one: nothing has been written yet
+        freshness, reason = self.recheck_freshness(bundle)
+        freshness = self.faults.override_freshness(FaultPoint.FRESHNESS_BEFORE_EFFECTS, freshness)
         if freshness is not FreshnessState.FRESH:
+            for effect in journal.unfinished_effects(plan.case_id):
+                if effect.state is EffectState.PLANNED:
+                    journal.transition_effect(effect.effect_key, EffectState.SUPERSEDED,
+                                              reconciliation_state="stale before any write")
             return self._seal(
                 plan, bundle, started_at, ExecutionState.SUPERSEDED, freshness,
                 github=None, slack=None,
-                summary=f"no write was attempted. {freshness_reason}",
-                notes=(freshness_reason,),
+                summary=f"no write was attempted. {reason}",
+                notes=(reason,), journal=journal,
             )
 
-        github_record = self._write_and_verify_github(plan, owner, repo)
+        recovered = reconcile_unfinished_effects(
+            journal, slack_writer=self.slack_writer,
+            status_writer=self.status_writer, case_id=plan.case_id,
+        )
+        for effect, result in recovered:
+            notes.append(
+                f"recovered {effect.provider} effect {effect.effect_key}: "
+                f"{result.outcome.value}. {result.detail}"
+            )
 
-        slack_record: EffectRecord | None = None
+        github_record = self._do_github_effect(journal, plan, owner, repo)
+
+        slack_record = None
+        superseded_after = False
         if plan.requires_slack:
-            slack_record = self._write_and_verify_slack(plan, bundle)
+            mid, mid_reason = self.recheck_freshness(bundle)
+            mid = self.faults.override_freshness(FaultPoint.FRESHNESS_BETWEEN_EFFECTS, mid)
+            if mid is not FreshnessState.FRESH:
+                superseded_after = True
+                notes.append(
+                    f"stopped before the Slack case: {mid_reason}. the GitHub effect "
+                    f"stays recorded and the analyzed sha is unchanged in the audit"
+                )
+            else:
+                slack_record = self._do_slack_effect(journal, plan, bundle)
         else:
             notes.append(f"no Slack case: {plan.slack_effect.reason}")
 
+        # boundary three: effects are written, confirm they are still current
+        at_seal, seal_reason = self.recheck_freshness(bundle)
+        at_seal = self.faults.override_freshness(FaultPoint.FRESHNESS_BEFORE_SEAL, at_seal)
+        if at_seal is not FreshnessState.FRESH:
+            superseded_after = True
+            notes.append(
+                f"the effects were written and then state moved: {seal_reason}. "
+                f"this execution is no longer current"
+            )
+
         required = [r for r in (github_record, slack_record) if r is not None]
-        if any(r.error for r in required):
+        missing_required = plan.requires_slack and slack_record is None
+
+        if superseded_after:
+            state = ExecutionState.SUPERSEDED
+        elif any(r.journal_state == EffectState.UNKNOWN.value for r in required):
+            state = ExecutionState.UNKNOWN
+        elif missing_required:
+            state = ExecutionState.PARTIAL
+        elif any(r.error for r in required):
             state = ExecutionState.FAILED
-        elif all(r.matched for r in required):
+        elif required and all(r.matched for r in required):
             state = ExecutionState.VERIFIED
         else:
             state = ExecutionState.PARTIAL
 
         matched = sum(1 for r in required if r.matched)
         summary = (
-            f"{matched} of {len(required)} required effect(s) were observed in "
-            f"provider state with matching fields"
+            f"{matched} of {len(required) + (1 if missing_required else 0)} required "
+            f"effect(s) were observed in provider state with matching fields"
         )
         return self._seal(plan, bundle, started_at, state, freshness,
                           github=github_record, slack=slack_record,
-                          summary=summary, notes=tuple(notes))
+                          summary=summary, notes=tuple(notes), journal=journal,
+                          freshness_at_seal=at_seal,
+                          superseded_after_effects=superseded_after)
 
-    def _write_and_verify_github(self, plan: ExecutionPlan, owner: str, repo: str) -> EffectRecord:
+    # --------------------------------------------------------- one effect
+
+    def _do_github_effect(self, journal, plan: ExecutionPlan, owner: str, repo: str):
         effect = plan.github_effect
         target = f"{plan.repository}@{effect.target_sha}"
+        payload = {
+            "repository": plan.repository, "sha": effect.target_sha,
+            "context": effect.context, "state": effect.state.value,
+            "description": effect.description,
+        }
+        digest = payload_digest(canonical_json(payload))
+        key = build_effect_key(
+            case_id=plan.case_id, analysis_id=plan.analysis_id, provider="github",
+            action_type="set_commit_status", target=target,
+            intended_payload_digest=digest,
+        )
+
         if self.status_writer is None:
             return EffectRecord(provider="github", action="set_commit_status",
-                                target=target, error="no status writer is configured")
+                                target=target, effect_key=key,
+                                error="no status writer is configured")
 
-        intended = f"{effect.context}|{effect.state.value}|{effect.description}"
-        try:
-            created = self.status_writer.set_commit_status(
-                owner, repo, effect.target_sha,
-                state=effect.state.value, context=effect.context,
-                description=effect.description,
+        # intent is durable before the provider is contacted
+        row = journal.plan_effect(
+            effect_key=key, case_id=plan.case_id, analysis_id=plan.analysis_id,
+            provider="github", action_type="set_commit_status", target=target,
+            intended_payload=payload, intended_payload_digest=digest,
+        )
+
+        if row.state is EffectState.VERIFIED:
+            return EffectRecord(
+                provider="github", action="already_verified", target=target,
+                intended_payload_digest=digest, effect_key=key,
+                provider_resource_id=row.provider_resource_id,
+                journal_state=row.state.value,
+                verification_state=VerificationState.MATCHED,
+                reconciliation_outcome=ReconciliationOutcome.ADOPTED.value,
+                reconciliation_detail="this exact intent was already verified",
+                attempt_count=row.attempt_count,
             )
-        except Exception as exc:  # noqa: BLE001
+
+        if row.state in (EffectState.FAILED, EffectState.SUPERSEDED):
+            return EffectRecord(
+                provider="github", action="already_closed", target=target,
+                intended_payload_digest=digest, effect_key=key,
+                journal_state=row.state.value,
+                error=row.last_error or f"effect is already {row.state.value}",
+                attempt_count=row.attempt_count,
+            )
+
+        # commit statuses are history bearing. if the latest record in this
+        # context already says what this analysis intends, adopt it rather than
+        # append another identical one.
+        existing = reconcile_github_status(
+            status_writer=self.status_writer, owner=owner, repo=repo,
+            sha=effect.target_sha, context=effect.context,
+            intended_state=effect.state.value,
+            intended_description=effect.description,
+        )
+        if existing.outcome is ReconciliationOutcome.ADOPTED:
+            journal.transition_effect(key, EffectState.IN_FLIGHT)
+            row = journal.transition_effect(
+                key, EffectState.VERIFIED,
+                provider_resource_id=existing.provider_resource_id,
+                reconciliation_state=existing.outcome.value,
+            )
+            return EffectRecord(
+                provider="github", action="adopt_existing_status", target=target,
+                intended_payload_digest=digest, effect_key=key,
+                provider_resource_id=existing.provider_resource_id,
+                normalized_observed_payload={**payload},
+                verification_state=VerificationState.MATCHED,
+                journal_state=row.state.value,
+                reconciliation_outcome=existing.outcome.value,
+                reconciliation_detail=existing.detail,
+                attempt_count=row.attempt_count,
+            )
+
+        journal.transition_effect(key, EffectState.IN_FLIGHT, bump_attempt=True)
+        try:
+            self.faults.check(FaultPoint.BEFORE_PROVIDER_CALL,
+                              provider="github", action="set_commit_status")
+            created = self.status_writer.set_commit_status(
+                owner, repo, effect.target_sha, state=effect.state.value,
+                context=effect.context, description=effect.description,
+            )
+            self.faults.check(FaultPoint.AFTER_PROVIDER_RESPONSE,
+                              provider="github", action="set_commit_status")
+        except InjectedFailure as exc:
+            row = journal.transition_effect(key, EffectState.FAILED, last_error=str(exc))
             return EffectRecord(provider="github", action="set_commit_status",
-                                target=target,
-                                intended_payload_digest=payload_digest(intended),
-                                error=f"{type(exc).__name__}: {exc}")
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=row.state.value,
+                                error=str(exc), attempt_count=row.attempt_count)
+        except InjectedResponseLoss as exc:
+            row = journal.transition_effect(key, EffectState.UNKNOWN, last_error=str(exc),
+                                            reconciliation_state="response lost")
+            return EffectRecord(provider="github", action="set_commit_status",
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=row.state.value,
+                                verification_state=VerificationState.NOT_ATTEMPTED,
+                                error=str(exc), attempt_count=row.attempt_count)
+        except Exception as exc:  # noqa: BLE001
+            row = journal.transition_effect(key, EffectState.UNKNOWN,
+                                            last_error=f"{type(exc).__name__}: {exc}",
+                                            reconciliation_state="call raised")
+            return EffectRecord(provider="github", action="set_commit_status",
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=row.state.value,
+                                error=f"{type(exc).__name__}: {exc}",
+                                attempt_count=row.attempt_count)
 
         observed = self.status_writer.latest_status_for_context(
             owner, repo, effect.target_sha, effect.context
         )
+        observed = self.faults.mutate_readback("github", observed)
+
         mismatches: list[str] = []
         normalized: dict[str, str] = {}
         if observed is None:
@@ -280,38 +492,38 @@ class Workflow:
             mismatches.append(f"no status for context {effect.context!r} on that commit")
         else:
             normalized = {
-                "repository": plan.repository,
-                "sha": effect.target_sha,
+                "repository": plan.repository, "sha": effect.target_sha,
                 "context": str(observed.get("context")),
                 "state": str(observed.get("state")),
                 "description": str(observed.get("description") or ""),
             }
             if normalized["context"] != effect.context:
-                mismatches.append(
-                    f"context is {normalized['context']!r}, expected {effect.context!r}"
-                )
+                mismatches.append(f"context is {normalized['context']!r}")
             if normalized["state"] != effect.state.value:
                 mismatches.append(
-                    f"state is {normalized['state']!r}, expected {effect.state.value!r}"
-                )
+                    f"state is {normalized['state']!r}, expected {effect.state.value!r}")
             if normalized["description"] != effect.description:
                 mismatches.append("description does not match what was written")
-            verification = (
-                VerificationState.MATCHED if not mismatches else VerificationState.MISMATCHED
-            )
+            verification = (VerificationState.MATCHED if not mismatches
+                            else VerificationState.MISMATCHED)
 
+        row = journal.transition_effect(
+            key, EffectState.VERIFIED if verification is VerificationState.MATCHED
+            else EffectState.UNKNOWN,
+            provider_resource_id=str(created.get("id")) if created else None,
+            last_error="; ".join(mismatches) or None,
+            reconciliation_state="direct read back",
+        )
         return EffectRecord(
-            provider="github",
-            action="set_commit_status",
-            target=target,
-            intended_payload_digest=payload_digest(intended),
+            provider="github", action="set_commit_status", target=target,
+            intended_payload_digest=digest, effect_key=key,
             provider_resource_id=str(created.get("id")) if created else None,
             normalized_observed_payload=normalized,
-            verification_state=verification,
-            mismatches=tuple(mismatches),
+            verification_state=verification, mismatches=tuple(mismatches),
+            journal_state=row.state.value, attempt_count=row.attempt_count,
         )
 
-    def _write_and_verify_slack(self, plan: ExecutionPlan, bundle: AnalysisBundle) -> EffectRecord:
+    def _do_slack_effect(self, journal, plan: ExecutionPlan, bundle: AnalysisBundle):
         target = f"{plan.slack_effect.channel_id}:{plan.case_id}"
         if self.slack_writer is None:
             return EffectRecord(provider="slack", action="create_or_update_case",
@@ -320,66 +532,196 @@ class Workflow:
         legal_names = {c.customer_id: c.legal_entity_name for c in self.registry.customers}
         text = render_case(bundle.decision, plan, legal_names=legal_names)
         wanted = expected_fields(bundle.decision, plan)
+        marker = plan.slack_effect.marker
+        digest = payload_digest(text)
+        payload = {"marker": marker, "channel": plan.slack_effect.channel_id,
+                   "expected_values": wanted, "text_digest": digest}
+        key = build_effect_key(
+            case_id=plan.case_id, analysis_id=plan.analysis_id, provider="slack",
+            action_type="create_or_update_case", target=target,
+            intended_payload_digest=digest,
+        )
 
+        row = journal.plan_effect(
+            effect_key=key, case_id=plan.case_id, analysis_id=plan.analysis_id,
+            provider="slack", action_type="create_or_update_case", target=target,
+            intended_payload=payload, intended_payload_digest=digest,
+        )
+
+        if row.state is EffectState.VERIFIED:
+            # this exact intent was already carried out and confirmed. writing
+            # again would add nothing and could disturb a case a person is reading.
+            return EffectRecord(
+                provider="slack", action="already_verified", target=target,
+                intended_payload_digest=digest, effect_key=key,
+                provider_resource_id=row.provider_resource_id,
+                journal_state=row.state.value,
+                verification_state=VerificationState.MATCHED,
+                reconciliation_outcome=ReconciliationOutcome.ADOPTED.value,
+                reconciliation_detail="this exact intent was already verified",
+                attempt_count=row.attempt_count,
+            )
+        if row.state in (EffectState.FAILED, EffectState.SUPERSEDED):
+            return EffectRecord(
+                provider="slack", action="already_closed", target=target,
+                intended_payload_digest=digest, effect_key=key,
+                journal_state=row.state.value,
+                error=row.last_error or f"effect is already {row.state.value}",
+                attempt_count=row.attempt_count,
+            )
+
+        case = journal.get_case(plan.case_id)
+        known = case.slack_resource_id if case else None
+
+        # never create before establishing whether the case already exists
+        found = reconcile_slack_case(
+            slack_writer=self.slack_writer, marker=marker,
+            known_resource_id=known, expected_values=wanted,
+        )
+
+        if found.outcome is ReconciliationOutcome.AMBIGUOUS:
+            updated = journal.transition_effect(
+                key, EffectState.FAILED, last_error=found.detail,
+                reconciliation_state=found.outcome.value)
+            return EffectRecord(provider="slack", action="refused_ambiguous_case",
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=updated.state.value,
+                                reconciliation_outcome=found.outcome.value,
+                                reconciliation_detail=found.detail,
+                                error=found.detail, attempt_count=updated.attempt_count)
+
+        if found.outcome is ReconciliationOutcome.UNREACHABLE:
+            # the provider could not be inspected and nothing has been written.
+            # the effect stays PLANNED if it never left planning, because an
+            # untried effect is not an uncertain one.
+            if row.state is not EffectState.PLANNED:
+                row = journal.transition_effect(
+                    key, EffectState.UNKNOWN, last_error=found.detail,
+                    reconciliation_state=found.outcome.value)
+            return EffectRecord(provider="slack", action="create_or_update_case",
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=row.state.value,
+                                reconciliation_outcome=found.outcome.value,
+                                reconciliation_detail=found.detail,
+                                error=found.detail, attempt_count=row.attempt_count)
+
+        from clauseci.adapters.slack_write import SlackMessageRef
+
+        existing_ref = None
+        if found.outcome is ReconciliationOutcome.ADOPTED and found.provider_resource_id:
+            channel, _, ts = found.provider_resource_id.partition("/")
+            existing_ref = SlackMessageRef(channel, ts)
+
+            # do not overwrite content this system did not write
+            try:
+                current = self.slack_writer.read_case(existing_ref)
+            except Exception as exc:  # noqa: BLE001
+                current = None
+            if current is not None:
+                current_digest = payload_digest(current.get("text") or "")
+                last_known = case.slack_payload_digest if case else None
+                if (last_known is not None and current_digest != last_known
+                        and current_digest != digest):
+                    detail = (
+                        "the Slack case has been edited since ClauseCI last wrote it. "
+                        "refusing to overwrite content this system did not write"
+                    )
+                    updated = journal.transition_effect(
+                        key, EffectState.FAILED, last_error=detail,
+                        reconciliation_state=ReconciliationOutcome.FOREIGN_CONTENT.value)
+                    return EffectRecord(
+                        provider="slack", action="refused_foreign_content", target=target,
+                        intended_payload_digest=digest, effect_key=key,
+                        provider_resource_id=found.provider_resource_id,
+                        journal_state=updated.state.value,
+                        reconciliation_outcome=ReconciliationOutcome.FOREIGN_CONTENT.value,
+                        reconciliation_detail=detail, error=detail,
+                        attempt_count=updated.attempt_count)
+
+        journal.transition_effect(key, EffectState.IN_FLIGHT, bump_attempt=True)
         try:
-            existing = self.slack_writer.find_case_by_marker(plan.slack_effect.marker)
-            if len(existing) > 1:
-                return EffectRecord(
-                    provider="slack", action="create_or_update_case", target=target,
-                    intended_payload_digest=payload_digest(text),
-                    error=(
-                        f"{len(existing)} root cases already carry marker "
-                        f"{plan.slack_effect.marker}. refusing to create another. "
-                        f"a human must resolve the duplicate"
-                    ),
-                )
-            if existing:
-                ref = self.slack_writer.update_case(existing[0], text)
+            self.faults.check(FaultPoint.BEFORE_PROVIDER_CALL,
+                              provider="slack", action="create_or_update_case")
+            if existing_ref is not None:
+                ref = self.slack_writer.update_case(existing_ref, text)
                 action = "update_case"
             else:
                 ref = self.slack_writer.post_case(text)
                 action = "post_case"
-        except Exception as exc:  # noqa: BLE001
+            self.faults.check(FaultPoint.AFTER_PROVIDER_RESPONSE,
+                              provider="slack", action="create_or_update_case")
+        except InjectedFailure as exc:
+            updated = journal.transition_effect(key, EffectState.FAILED, last_error=str(exc))
             return EffectRecord(provider="slack", action="create_or_update_case",
-                                target=target,
-                                intended_payload_digest=payload_digest(text),
-                                error=f"{type(exc).__name__}: {exc}")
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=updated.state.value,
+                                error=str(exc), attempt_count=updated.attempt_count)
+        except InjectedResponseLoss as exc:
+            updated = journal.transition_effect(
+                key, EffectState.UNKNOWN, last_error=str(exc),
+                reconciliation_state="response lost after a real write")
+            return EffectRecord(provider="slack", action="create_or_update_case",
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=updated.state.value,
+                                error=str(exc), attempt_count=updated.attempt_count)
+        except Exception as exc:  # noqa: BLE001
+            updated = journal.transition_effect(
+                key, EffectState.UNKNOWN, last_error=f"{type(exc).__name__}: {exc}",
+                reconciliation_state="call raised")
+            return EffectRecord(provider="slack", action="create_or_update_case",
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=updated.state.value,
+                                error=f"{type(exc).__name__}: {exc}",
+                                attempt_count=updated.attempt_count)
 
         try:
             observed = self.slack_writer.read_case(ref)
         except Exception as exc:  # noqa: BLE001
+            updated = journal.transition_effect(
+                key, EffectState.UNKNOWN, provider_resource_id=ref.resource_id,
+                last_error=f"{type(exc).__name__}: {exc}",
+                reconciliation_state="read back failed")
             return EffectRecord(provider="slack", action=action, target=target,
-                                intended_payload_digest=payload_digest(text),
+                                intended_payload_digest=digest, effect_key=key,
                                 provider_resource_id=ref.resource_id,
+                                journal_state=updated.state.value,
                                 verification_state=VerificationState.NOT_FOUND,
-                                error=f"{type(exc).__name__}: {exc}")
+                                error=f"{type(exc).__name__}: {exc}",
+                                attempt_count=updated.attempt_count)
 
+        observed = self.faults.mutate_readback("slack", observed)
         body = observed.get("text") or ""
-        mismatches = [
-            f"{name} missing from the case ({value!r})"
-            for name, value in wanted.items()
-            if value not in body
-        ]
+        mismatches = [f"{name} missing from the case ({value!r})"
+                      for name, value in wanted.items() if value not in body]
         normalized = {name: ("present" if value in body else "missing")
                       for name, value in wanted.items()}
         normalized["channel"] = ref.channel_id
         normalized["ts"] = ref.ts
 
+        verification = (VerificationState.MATCHED if not mismatches
+                        else VerificationState.MISMATCHED)
+        updated = journal.transition_effect(
+            key, EffectState.VERIFIED if not mismatches else EffectState.UNKNOWN,
+            provider_resource_id=ref.resource_id,
+            last_error="; ".join(mismatches) or None,
+            reconciliation_state="direct read back")
+        journal.set_case_slack_resource(
+            plan.case_id, ref.resource_id, payload_digest(body))
+
         return EffectRecord(
-            provider="slack",
-            action=action,
-            target=target,
-            intended_payload_digest=payload_digest(text),
+            provider="slack", action=action, target=target,
+            intended_payload_digest=digest, effect_key=key,
             provider_resource_id=ref.resource_id,
             normalized_observed_payload=normalized,
-            verification_state=(
-                VerificationState.MATCHED if not mismatches else VerificationState.MISMATCHED
-            ),
-            mismatches=tuple(mismatches),
-        )
+            verification_state=verification, mismatches=tuple(mismatches),
+            journal_state=updated.state.value,
+            reconciliation_outcome=found.outcome.value,
+            reconciliation_detail=found.detail,
+            attempt_count=updated.attempt_count)
 
     def _seal(
-        self, plan, bundle, started_at, state, freshness, *, github, slack, summary, notes,
+        self, plan, bundle, started_at, state, freshness, *, github, slack, summary,
+        notes, journal=None, freshness_at_seal=None, superseded_after_effects=False,
     ) -> ExecutionReceipt:
         receipt = ExecutionReceipt(
             case_id=plan.case_id,
@@ -404,9 +746,20 @@ class Workflow:
                 "semantic_model": bundle.analysis.metadata.model,
                 "semantic_prompt_version": bundle.analysis.metadata.prompt_version,
                 "semantic_schema_version": bundle.analysis.metadata.schema_version,
+                "reconciliation_policy_version": RECONCILIATION_POLICY_VERSION,
             },
             notes=notes,
+            freshness_at_seal=freshness_at_seal,
+            superseded_after_effects=superseded_after_effects,
+            journal_path=str(journal.path) if journal is not None else None,
         )
+        if journal is not None:
+            journal.record_receipt(
+                case_id=receipt.case_id, analysis_id=receipt.analysis_id,
+                head_sha=receipt.head_sha, corpus_digest=receipt.corpus_digest,
+                execution_state=receipt.execution_state.value,
+                receipt_json=receipt.to_json(),
+            )
         return receipt
 
 

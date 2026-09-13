@@ -42,11 +42,15 @@ class SlackAction(str, Enum):
 class ExecutionState(str, Enum):
     #: every required effect was observed in provider state and matched
     VERIFIED = "VERIFIED"
-    #: some required effect was written but could not be confirmed
+    #: some required effects succeeded and some definitively failed
     PARTIAL = "PARTIAL"
-    #: execution failed before or during the required effects
+    #: at least one required effect may have happened and provider state cannot
+    #: establish the outcome. This is never collapsed into FAILED, because the
+    #: difference decides whether a retry is safe.
+    UNKNOWN = "UNKNOWN"
+    #: required effects definitively did not complete and nothing is uncertain
     FAILED = "FAILED"
-    #: the pull request head or the source corpus moved before the writes
+    #: the head or the corpus moved, so this execution is no longer current
     SUPERSEDED = "SUPERSEDED"
 
 
@@ -244,6 +248,12 @@ class EffectRecord(Frozen):
     verification_state: VerificationState = VerificationState.NOT_ATTEMPTED
     mismatches: tuple[str, ...] = ()
     error: str | None = None
+    #: durable journal identity and state for this effect
+    effect_key: str | None = None
+    journal_state: str | None = None
+    reconciliation_outcome: str | None = None
+    reconciliation_detail: str | None = None
+    attempt_count: int = 0
 
     @property
     def matched(self) -> bool:
@@ -273,6 +283,11 @@ class ExecutionReceipt(Frozen):
 
     policy_versions: dict[str, str]
     notes: tuple[str, ...] = ()
+    #: freshness re-checked again immediately before sealing
+    freshness_at_seal: FreshnessState | None = None
+    #: set when effects were written and then the head or corpus moved
+    superseded_after_effects: bool = False
+    journal_path: str | None = None
 
     def binds(self, head_sha: str, corpus_digest: str) -> bool:
         """A receipt is only valid for the exact revision it was sealed on."""
