@@ -3,8 +3,8 @@
 Generated from raw evaluation records. No number here was typed by hand.
 
 - run id: `eval-20260913T175720Z-1a4c5f`
-- runtime commit: `ed7252a8d8dbc0f36ef3d0370ccdc5eee4ee80d7`
-- generated: 2026-09-13T18:12:32.413921+00:00
+- runtime commit: `43aa258004cb84de3d8f1e67ab62c83f929b1da8`
+- generated: 2026-09-13T18:23:13.647838+00:00
 - model: `anthropic/claude-sonnet-4.5`, prompt `retention-extract-1.0.0`
 
 This is evaluation evidence. It is separate from the pytest regression suite, which is engineering evidence and is reported separately.

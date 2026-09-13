@@ -1,0 +1,747 @@
+{
+  "analyses": [
+    {
+      "analysis_id": "an-988da41c03a47b46",
+      "base_sha": "bdb3faaea8b23c1f08884fe2403ec8c6297e59ab",
+      "corpus_digest": "ee10e489beef3b66dc65e8ef7043380a0bb99671cba360b280e892a537e5a6f6",
+      "decision": "CONFLICT",
+      "effects": [
+        {
+          "action": "set_commit_status",
+          "effect_key": "ef-eebe3a86d4359d1f1489",
+          "provider": "github",
+          "provider_resource_id": "res-b984183f5b6f",
+          "state": "VERIFIED"
+        },
+        {
+          "action": "create_or_update_case",
+          "effect_key": "ef-9beb8a3356ca4f27fda7",
+          "provider": "slack",
+          "provider_resource_id": "res-4e761198e782",
+          "state": "VERIFIED"
+        }
+      ],
+      "head_sha": "ed423b0bbb81d3d0828c27613d484704db701ed5",
+      "receipt_at": "2026-09-13T17:35:58.157944+00:00",
+      "receipt_state": "VERIFIED",
+      "semantic_model": "anthropic/claude-sonnet-4.5",
+      "semantic_prompt_version": "retention-extract-1.0.0"
+    },
+    {
+      "analysis_id": "an-cc89f6f742a2944d",
+      "base_sha": "bdb3faaea8b23c1f08884fe2403ec8c6297e59ab",
+      "corpus_digest": "ee10e489beef3b66dc65e8ef7043380a0bb99671cba360b280e892a537e5a6f6",
+      "decision": "PASS_SCOPED",
+      "effects": [
+        {
+          "action": "set_commit_status",
+          "effect_key": "ef-dd6dba447d26752cea49",
+          "provider": "github",
+          "provider_resource_id": "res-8a94f0728c18",
+          "state": "VERIFIED"
+        },
+        {
+          "action": "create_or_update_case",
+          "effect_key": "ef-aa1913000ddfcd90eb9a",
+          "provider": "slack",
+          "provider_resource_id": "res-4e761198e782",
+          "state": "VERIFIED"
+        }
+      ],
+      "head_sha": "a47f5657e69908002b421748a03ac3a5bbf92284",
+      "receipt_at": "2026-09-13T17:46:22.108909+00:00",
+      "receipt_state": "VERIFIED",
+      "semantic_model": "anthropic/claude-sonnet-4.5",
+      "semantic_prompt_version": "retention-extract-1.0.0"
+    }
+  ],
+  "artifact_version": "1.0.0",
+  "case_id": "cci-612892eccea4",
+  "case_state": "RESOLVED",
+  "corrected": {
+    "base_sha": "bdb3faaea8b23c1f08884fe2403ec8c6297e59ab",
+    "baseline_state": "PASS_SCOPED",
+    "candidates": [
+      {
+        "candidate_id": "A",
+        "candidate_type": "REQUESTED",
+        "customers_fully_preserved": 2,
+        "customers_total": 2,
+        "effective_values": [
+          {
+            "category": "application_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-labs",
+            "value": 180
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "globex",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "globex",
+            "value": 365
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "globex",
+            "value": 90
+          }
+        ],
+        "feasibility_state": "FEASIBLE_IN_SCOPE",
+        "patch": "",
+        "requested_outcomes_preserved": 4,
+        "requested_outcomes_total": 4
+      },
+      {
+        "candidate_id": "B",
+        "candidate_type": "BASELINE_RELEVANT_FIELDS",
+        "customers_fully_preserved": 0,
+        "customers_total": 2,
+        "effective_values": [
+          {
+            "category": "application_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "acme-labs",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-labs",
+            "value": 180
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-labs",
+            "value": 30
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "globex",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "globex",
+            "value": 365
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "globex",
+            "value": 30
+          }
+        ],
+        "feasibility_state": "FEASIBLE_IN_SCOPE",
+        "patch": "--- a/config/retention.yaml\n+++ b/config/retention.yaml\n@@ -10,8 +10,8 @@\n # pin its own override.\n \n defaults:\n-  application_logs_days: 90\n-  diagnostic_logs_days: 90\n+  application_logs_days: 30\n+  diagnostic_logs_days: 30\n   audit_logs_days: 30\n   backup_retention_days: 7\n \n@@ -20,8 +20,6 @@\n     display_name: \"Acme Corporation\"\n     # application, diagnostic and audit all inherit from defaults.\n     backup_retention_days: 7\n-    application_logs_days: 30\n-    diagnostic_logs_days: 30\n \n   globex:\n     display_name: \"Globex International Ltd.\"\n",
+        "requested_outcomes_preserved": 0,
+        "requested_outcomes_total": 4
+      },
+      {
+        "candidate_id": "C",
+        "candidate_type": "CUSTOMER_SCOPED_CORRECTION",
+        "customers_fully_preserved": 2,
+        "customers_total": 2,
+        "effective_values": [
+          {
+            "category": "application_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-labs",
+            "value": 180
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "globex",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "globex",
+            "value": 365
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "globex",
+            "value": 90
+          }
+        ],
+        "feasibility_state": "FEASIBLE_IN_SCOPE",
+        "patch": "",
+        "requested_outcomes_preserved": 4,
+        "requested_outcomes_total": 4
+      }
+    ],
+    "corpus_digest": "ee10e489beef3b66dc65e8ef7043380a0bb99671cba360b280e892a537e5a6f6",
+    "decision": "PASS_SCOPED",
+    "decision_policy_version": "scoped-retention-decision-1.0.0",
+    "findings": [
+      {
+        "actual_value": 30,
+        "category": "application_logs",
+        "controlling_source_id": "NW-DPA-ACME-2026-A1",
+        "customer_id": "acme-corp",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Customer Data, including application logs, diagnostic logs and audit logs, shall not be retained for more than thirty (30) days from the date of creation.",
+        "represented_limit": 30,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 30,
+        "category": "audit_logs",
+        "controlling_source_id": "NW-DPA-ACME-2026-A1",
+        "customer_id": "acme-corp",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Customer Data, including application logs, diagnostic logs and audit logs, shall not be retained for more than thirty (30) days from the date of creation.",
+        "represented_limit": 30,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 30,
+        "category": "diagnostic_logs",
+        "controlling_source_id": "NW-DPA-ACME-2026-A1",
+        "customer_id": "acme-corp",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Customer Data, including application logs, diagnostic logs and audit logs, shall not be retained for more than thirty (30) days from the date of creation.",
+        "represented_limit": 30,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 90,
+        "category": "application_logs",
+        "controlling_source_id": "NW-MSA-ACMELABS-2026-0611",
+        "customer_id": "acme-labs",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs for up to one hundred and eighty (180) days.",
+        "represented_limit": 180,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 180,
+        "category": "audit_logs",
+        "controlling_source_id": null,
+        "customer_id": "acme-labs",
+        "disposition": "NO_REPRESENTED_OBLIGATION",
+        "introduced_by_pr": false,
+        "quote": null,
+        "represented_limit": null,
+        "section": null
+      },
+      {
+        "actual_value": 90,
+        "category": "diagnostic_logs",
+        "controlling_source_id": "NW-MSA-ACMELABS-2026-0611",
+        "customer_id": "acme-labs",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs for up to one hundred and eighty (180) days.",
+        "represented_limit": 180,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 90,
+        "category": "application_logs",
+        "controlling_source_id": "NW-DPA-GLOBEX-2026-0302",
+        "customer_id": "globex",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs containing Customer Data for a period of up to ninety (90) days, after which such logs shall be deleted or irreversibly anonymised.",
+        "represented_limit": 90,
+        "section": "1.1"
+      },
+      {
+        "actual_value": 365,
+        "category": "audit_logs",
+        "controlling_source_id": "NW-DPA-GLOBEX-2026-0302",
+        "customer_id": "globex",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Audit logs may be retained for up to three hundred and sixty-five (365) days.",
+        "represented_limit": 365,
+        "section": "1.2"
+      },
+      {
+        "actual_value": 90,
+        "category": "diagnostic_logs",
+        "controlling_source_id": "NW-DPA-GLOBEX-2026-0302",
+        "customer_id": "globex",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs containing Customer Data for a period of up to ninety (90) days, after which such logs shall be deleted or irreversibly anonymised.",
+        "represented_limit": 90,
+        "section": "1.1"
+      }
+    ],
+    "head_sha": "a47f5657e69908002b421748a03ac3a5bbf92284",
+    "preferred_candidate_id": "A",
+    "ranking_explanation": "candidate A preserves 4 of 4 requested category outcomes, the most among candidates that are feasible in scope, changing 0 configuration field(s) against the requested head",
+    "reason": "every represented supported retention predicate passed for this exact configuration and source snapshot",
+    "semantic_model": "anthropic/claude-sonnet-4.5",
+    "semantic_prompt_version": "retention-extract-1.0.0",
+    "unrepresented_categories": [
+      "acme-labs.audit_logs"
+    ]
+  },
+  "corrected_receipt": {
+    "decision": "PASS_SCOPED",
+    "effects": [
+      {
+        "action": "set_commit_status",
+        "effect_key": "ef-dd6dba447d26752cea49",
+        "journal_state": "VERIFIED",
+        "observed_state": "success",
+        "provider": "github",
+        "provider_resource": "res-8a94f0728c18",
+        "verification_state": "MATCHED"
+      },
+      {
+        "action": "resolve_case",
+        "effect_key": "ef-aa1913000ddfcd90eb9a",
+        "journal_state": "VERIFIED",
+        "observed_state": "present",
+        "provider": "slack",
+        "provider_resource": "res-4e761198e782",
+        "verification_state": "MATCHED"
+      }
+    ],
+    "execution_state": "VERIFIED",
+    "freshness": "FRESH",
+    "head_sha": "a47f5657e69908002b421748a03ac3a5bbf92284",
+    "policy_versions": {
+      "decision_policy_version": "scoped-retention-decision-1.0.0",
+      "execution_policy_version": "bounded-execution-1.0.0",
+      "parser_version": "1.0.0",
+      "policy_version": "retention-only-1.0.0",
+      "reconciliation_policy_version": "readback-reconcile-1.0.0",
+      "semantic_model": "anthropic/claude-sonnet-4.5",
+      "semantic_prompt_version": "retention-extract-1.0.0",
+      "semantic_schema_version": "candidate-obligation-1.0.0"
+    },
+    "verification_summary": "2 of 2 required effect(s) were observed in provider state with matching fields"
+  },
+  "correction": {
+    "applied_by": "a developer, in a separate commit",
+    "candidate_id": "C",
+    "effective_values_after": {
+      "acme-corp.application_logs": 30,
+      "acme-corp.audit_logs": 30,
+      "acme-corp.diagnostic_logs": 30,
+      "acme-labs.application_logs": 90,
+      "acme-labs.audit_logs": 180,
+      "acme-labs.diagnostic_logs": 90,
+      "globex.application_logs": 90,
+      "globex.audit_logs": 365,
+      "globex.diagnostic_logs": 90
+    },
+    "patch": "--- a/config/retention.yaml\n+++ b/config/retention.yaml\n@@ -20,6 +20,8 @@\n     display_name: \"Acme Corporation\"\n     # application, diagnostic and audit all inherit from defaults.\n     backup_retention_days: 7\n+    application_logs_days: 30\n+    diagnostic_logs_days: 30\n \n   globex:\n     display_name: \"Globex International Ltd.\"\n",
+    "proposed_yaml": "# Northwind Platform, data retention policy.\n# All values are in days.\n#\n# Resolution order for any (customer, field):\n#   1. the value under customers.<id>, if present\n#   2. otherwise the value under defaults\n#\n# Several of these values are constrained per customer by signed agreements.\n# Raising a default therefore changes behaviour for every tenant that does not\n# pin its own override.\n\ndefaults:\n  application_logs_days: 90\n  diagnostic_logs_days: 90\n  audit_logs_days: 30\n  backup_retention_days: 7\n\ncustomers:\n  acme-corp:\n    display_name: \"Acme Corporation\"\n    # application, diagnostic and audit all inherit from defaults.\n    backup_retention_days: 7\n    application_logs_days: 30\n    diagnostic_logs_days: 30\n\n  globex:\n    display_name: \"Globex International Ltd.\"\n    # application and diagnostic inherit from defaults.\n    audit_logs_days: 365\n    backup_retention_days: 30\n\n  acme-labs:\n    display_name: \"Acme Labs Pvt Ltd\"\n    # application and diagnostic inherit from defaults.\n    audit_logs_days: 180\n    backup_retention_days: 30\n",
+    "statement": "This correction has not been applied. ClauseCI does not commit, push or merge code. A developer applies it as a separate action.",
+    "why_preferred": "candidate C preserves 4 of 6 requested category outcomes, the most among candidates that are feasible in scope, changing 2 configuration field(s) against the requested head"
+  },
+  "generated_at": "2026-09-13T18:17:49.786734+00:00",
+  "invariants": {
+    "distinct_analysis_ids": true,
+    "distinct_head_shas": true,
+    "one_case_many_analyses": true,
+    "single_slack_resource": true
+  },
+  "kind": "captured live provider evidence from the real runs",
+  "pr_number": 1,
+  "provider_state_note": "These are captured results from the real runs. The console can also read current provider state separately, which is labelled as such.",
+  "repository": "Pranavsingh431/clauseci-demo-saas",
+  "resolved_by_analysis_id": "an-cc89f6f742a2944d",
+  "resolved_head_sha": "a47f5657e69908002b421748a03ac3a5bbf92284",
+  "slack_resource": "res-4e761198e782",
+  "unsafe": {
+    "base_sha": "bdb3faaea8b23c1f08884fe2403ec8c6297e59ab",
+    "baseline_state": "PASS_SCOPED",
+    "candidates": [
+      {
+        "candidate_id": "A",
+        "candidate_type": "REQUESTED",
+        "customers_fully_preserved": 3,
+        "customers_total": 3,
+        "effective_values": [
+          {
+            "category": "application_logs",
+            "customer_id": "acme-corp",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-corp",
+            "value": 90
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-labs",
+            "value": 180
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "globex",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "globex",
+            "value": 365
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "globex",
+            "value": 90
+          }
+        ],
+        "feasibility_state": "CONFLICT",
+        "patch": "",
+        "requested_outcomes_preserved": 6,
+        "requested_outcomes_total": 6
+      },
+      {
+        "candidate_id": "B",
+        "candidate_type": "BASELINE_RELEVANT_FIELDS",
+        "customers_fully_preserved": 0,
+        "customers_total": 3,
+        "effective_values": [
+          {
+            "category": "application_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "acme-labs",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-labs",
+            "value": 180
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-labs",
+            "value": 30
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "globex",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "globex",
+            "value": 365
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "globex",
+            "value": 30
+          }
+        ],
+        "feasibility_state": "FEASIBLE_IN_SCOPE",
+        "patch": "--- a/config/retention.yaml\n+++ b/config/retention.yaml\n@@ -10,8 +10,8 @@\n # pin its own override.\n \n defaults:\n-  application_logs_days: 90\n-  diagnostic_logs_days: 90\n+  application_logs_days: 30\n+  diagnostic_logs_days: 30\n   audit_logs_days: 30\n   backup_retention_days: 7\n \n",
+        "requested_outcomes_preserved": 0,
+        "requested_outcomes_total": 6
+      },
+      {
+        "candidate_id": "C",
+        "candidate_type": "CUSTOMER_SCOPED_CORRECTION",
+        "customers_fully_preserved": 2,
+        "customers_total": 3,
+        "effective_values": [
+          {
+            "category": "application_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-corp",
+            "value": 30
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "acme-labs",
+            "value": 180
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "acme-labs",
+            "value": 90
+          },
+          {
+            "category": "application_logs",
+            "customer_id": "globex",
+            "value": 90
+          },
+          {
+            "category": "audit_logs",
+            "customer_id": "globex",
+            "value": 365
+          },
+          {
+            "category": "diagnostic_logs",
+            "customer_id": "globex",
+            "value": 90
+          }
+        ],
+        "feasibility_state": "FEASIBLE_IN_SCOPE",
+        "patch": "--- a/config/retention.yaml\n+++ b/config/retention.yaml\n@@ -20,6 +20,8 @@\n     display_name: \"Acme Corporation\"\n     # application, diagnostic and audit all inherit from defaults.\n     backup_retention_days: 7\n+    application_logs_days: 30\n+    diagnostic_logs_days: 30\n \n   globex:\n     display_name: \"Globex International Ltd.\"\n",
+        "requested_outcomes_preserved": 4,
+        "requested_outcomes_total": 6
+      }
+    ],
+    "corpus_digest": "ee10e489beef3b66dc65e8ef7043380a0bb99671cba360b280e892a537e5a6f6",
+    "decision": "CONFLICT",
+    "decision_policy_version": "scoped-retention-decision-1.0.0",
+    "findings": [
+      {
+        "actual_value": 90,
+        "category": "application_logs",
+        "controlling_source_id": "NW-DPA-ACME-2026-A1",
+        "customer_id": "acme-corp",
+        "disposition": "VIOLATED",
+        "introduced_by_pr": true,
+        "quote": "Customer Data, including application logs, diagnostic logs and audit logs, shall not be retained for more than thirty (30) days from the date of creation.",
+        "represented_limit": 30,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 30,
+        "category": "audit_logs",
+        "controlling_source_id": "NW-DPA-ACME-2026-A1",
+        "customer_id": "acme-corp",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Customer Data, including application logs, diagnostic logs and audit logs, shall not be retained for more than thirty (30) days from the date of creation.",
+        "represented_limit": 30,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 90,
+        "category": "diagnostic_logs",
+        "controlling_source_id": "NW-DPA-ACME-2026-A1",
+        "customer_id": "acme-corp",
+        "disposition": "VIOLATED",
+        "introduced_by_pr": true,
+        "quote": "Customer Data, including application logs, diagnostic logs and audit logs, shall not be retained for more than thirty (30) days from the date of creation.",
+        "represented_limit": 30,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 90,
+        "category": "application_logs",
+        "controlling_source_id": "NW-MSA-ACMELABS-2026-0611",
+        "customer_id": "acme-labs",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs for up to one hundred and eighty (180) days.",
+        "represented_limit": 180,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 180,
+        "category": "audit_logs",
+        "controlling_source_id": null,
+        "customer_id": "acme-labs",
+        "disposition": "NO_REPRESENTED_OBLIGATION",
+        "introduced_by_pr": false,
+        "quote": null,
+        "represented_limit": null,
+        "section": null
+      },
+      {
+        "actual_value": 90,
+        "category": "diagnostic_logs",
+        "controlling_source_id": "NW-MSA-ACMELABS-2026-0611",
+        "customer_id": "acme-labs",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs for up to one hundred and eighty (180) days.",
+        "represented_limit": 180,
+        "section": "2.1"
+      },
+      {
+        "actual_value": 90,
+        "category": "application_logs",
+        "controlling_source_id": "NW-DPA-GLOBEX-2026-0302",
+        "customer_id": "globex",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs containing Customer Data for a period of up to ninety (90) days, after which such logs shall be deleted or irreversibly anonymised.",
+        "represented_limit": 90,
+        "section": "1.1"
+      },
+      {
+        "actual_value": 365,
+        "category": "audit_logs",
+        "controlling_source_id": "NW-DPA-GLOBEX-2026-0302",
+        "customer_id": "globex",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Audit logs may be retained for up to three hundred and sixty-five (365) days.",
+        "represented_limit": 365,
+        "section": "1.2"
+      },
+      {
+        "actual_value": 90,
+        "category": "diagnostic_logs",
+        "controlling_source_id": "NW-DPA-GLOBEX-2026-0302",
+        "customer_id": "globex",
+        "disposition": "SATISFIED",
+        "introduced_by_pr": false,
+        "quote": "Northwind may retain application and diagnostic logs containing Customer Data for a period of up to ninety (90) days, after which such logs shall be deleted or irreversibly anonymised.",
+        "represented_limit": 90,
+        "section": "1.1"
+      }
+    ],
+    "head_sha": "ed423b0bbb81d3d0828c27613d484704db701ed5",
+    "preferred_candidate_id": "C",
+    "ranking_explanation": "candidate C preserves 4 of 6 requested category outcomes, the most among candidates that are feasible in scope, changing 2 configuration field(s) against the requested head",
+    "reason": "2 represented retention predicate(s) violated: 2 introduced by this pull request",
+    "semantic_model": "anthropic/claude-sonnet-4.5",
+    "semantic_prompt_version": "retention-extract-1.0.0",
+    "unrepresented_categories": [
+      "acme-labs.audit_logs"
+    ]
+  },
+  "unsafe_receipt": {
+    "decision": "CONFLICT",
+    "effects": [
+      {
+        "action": "set_commit_status",
+        "effect_key": null,
+        "journal_state": null,
+        "observed_state": "failure",
+        "provider": "github",
+        "provider_resource": "res-c289c19f2020",
+        "verification_state": "MATCHED"
+      },
+      {
+        "action": "post_case",
+        "effect_key": null,
+        "journal_state": null,
+        "observed_state": null,
+        "provider": "slack",
+        "provider_resource": "res-4e761198e782",
+        "verification_state": "MATCHED"
+      }
+    ],
+    "execution_state": "VERIFIED",
+    "freshness": "FRESH",
+    "head_sha": "ed423b0bbb81d3d0828c27613d484704db701ed5",
+    "policy_versions": {
+      "decision_policy_version": "scoped-retention-decision-1.0.0",
+      "execution_policy_version": "bounded-execution-1.0.0",
+      "parser_version": "1.0.0",
+      "policy_version": "retention-only-1.0.0",
+      "semantic_model": "anthropic/claude-sonnet-4.5",
+      "semantic_prompt_version": "retention-extract-1.0.0",
+      "semantic_schema_version": "candidate-obligation-1.0.0"
+    },
+    "verification_summary": "2 of 2 required effect(s) were observed in provider state with matching fields"
+  }
+}

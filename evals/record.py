@@ -7,7 +7,9 @@ typed by hand into a report.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -91,6 +93,29 @@ class EvaluationRecord:
         return data
 
 
+#: Shapes of personal provider identifiers. A GitHub status id is a public
+#: artifact of a public repository and is kept. A Slack channel and message
+#: timestamp identify a private workspace, so they are replaced by a short
+#: stable hash that still supports cross record identity checks.
+_SLACK_RESOURCE = re.compile(r"\bC0[A-Z0-9]{7,}/[0-9]{10}\.[0-9]{6}\b")
+_SLACK_CHANNEL = re.compile(r"\bC0[A-Z0-9]{7,}\b")
+
+
+def sanitize_provider_ids(value):
+    """Replace personal provider identifiers with a stable hash, recursively."""
+    if isinstance(value, str):
+        for pattern in (_SLACK_RESOURCE, _SLACK_CHANNEL):
+            value = pattern.sub(
+                lambda m: "res-" + hashlib.sha256(m.group(0).encode()).hexdigest()[:12],
+                value)
+        return value
+    if isinstance(value, dict):
+        return {k: sanitize_provider_ids(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [sanitize_provider_ids(v) for v in value]
+    return value
+
+
 class RecordWriter:
     """Appends raw records as JSON lines. Raw first, summaries second."""
 
@@ -106,7 +131,7 @@ class RecordWriter:
         record.runtime_commit = record.runtime_commit or runtime_commit()
         record.started_at = record.started_at or datetime.now(timezone.utc).isoformat()
         record.completed_at = record.completed_at or datetime.now(timezone.utc).isoformat()
-        payload = record.to_dict()
+        payload = sanitize_provider_ids(record.to_dict())
         self._handle.write(json.dumps(payload, sort_keys=True, default=str) + "\n")
         self._handle.flush()
         self.records.append(payload)

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-13T18:12:32.413921+00:00",
+  "generated_at": "2026-09-13T18:23:13.647838+00:00",
   "metrics": {
     "cost_and_latency": {
       "latency_ms_max": 36771.8,
@@ -120,5 +120,5 @@
   "prompt_version": "retention-extract-1.0.0",
   "raw_records": "evals/results/raw/eval-20260913T175720Z-1a4c5f.jsonl",
   "run_id": "eval-20260913T175720Z-1a4c5f",
-  "runtime_commit": "ed7252a8d8dbc0f36ef3d0370ccdc5eee4ee80d7"
+  "runtime_commit": "43aa258004cb84de3d8f1e67ab62c83f929b1da8"
 }
