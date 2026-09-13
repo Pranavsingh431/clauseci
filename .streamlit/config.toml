@@ -10,11 +10,15 @@
 # .streamlit/secrets.toml at all.
 
 [theme]
-base = "dark"
-primaryColor = "#5B8DEF"
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#161A23"
-textColor = "#E6E9EF"
+# Light on purpose, and pinned rather than inherited. `base` alone would still
+# let a viewer's system dark mode change the page, and the custom CSS in
+# ui/theme.py is a light system. The two have to agree or the page ends up with
+# light text on a light ground.
+base = "light"
+primaryColor = "#2A5FC8"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F6F8FA"
+textColor = "#15181E"
 font = "sans serif"
 
 [browser]

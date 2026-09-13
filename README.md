@@ -1,10 +1,14 @@
 # ClauseCI
 
-**Customer aware release decisions for B2B SaaS.** ClauseCI checks a proposed
-configuration change against the customer agreements that actually govern each
-account, publishes a scoped release decision on the pull request, proposes a
-supported correction, and verifies the engineering workflow across GitHub,
-Google Drive and Slack.
+**Customer aware CI for B2B SaaS release decisions.**
+
+ClauseCI reads a proposed GitHub configuration change, interprets the agreements
+that govern each customer, detects contract specific release conflicts, proposes
+a customer scoped correction, publishes the required GitHub check, maintains the
+Slack engineering case, and verifies the workflow after correction.
+
+**Live interactive demo:
+[clauseci.streamlit.app](https://clauseci-2jfpnwaqmsyjncrph7ythl.streamlit.app/)**
 
 ## The example
 
@@ -43,9 +47,8 @@ What then happened, for real, on this repository's own demo pull request:
 The unsafe commit keeps its failing check permanently. The corrected commit
 earned its own. One engineering case spans both.
 
-**ClauseCI proposed the correction. A developer applied it. ClauseCI does not
-commit, push or merge code**, and a test greps the runtime package to keep it
-that way.
+**ClauseCI proposed the correction. A developer applied it. ClauseCI then
+verified the new commit and closed the workflow.**
 
 ## What ClauseCI does
 
@@ -117,6 +120,9 @@ predicates, for one recorded configuration and one recorded source snapshot.
 - The product command is read only by default. `--execute` is the only path to
   a provider write. Google Drive is read only at the OAuth scope.
 - Code from the analyzed pull request is never executed.
+- ClauseCI does not merge pull requests and does not push remediation
+  commits. A developer applies the correction. A test greps the runtime
+  package to keep it that way.
 
 ## Reliability model
 
@@ -160,7 +166,7 @@ everything cannot look reliable.
 the high risk ones run three times with the cache off. Repeats are reported
 separately and are not counted as extra scenarios.
 
-Separately, the repository has **416 engineering regression tests** passing.
+Separately, the repository has **441 engineering regression tests** passing.
 That is engineering evidence, not an evaluation score, and the two are never
 added together.
 
@@ -275,7 +281,7 @@ clauseci/          runtime package
   run.py           the product command
 demo_contracts/    8 synthetic contract PDFs
 evals/             evaluation runner, oracles, generated results
-tests/             416 regression tests
+tests/             441 regression tests
 ui/console.py      the Evidence Console
 docs/              architecture, evaluation, hardening
 ```

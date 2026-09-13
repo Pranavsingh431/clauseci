@@ -219,9 +219,19 @@ def test_pub15_candidate_c_is_preferred_not_optimal(source, evidence):
         assert "not claimed to be" in window, f"unqualified claim near: {window}"
 
 
-def test_pub16_the_ui_says_a_developer_applied_the_correction(source):
+def test_pub16_the_ui_says_a_developer_applied_the_correction(source, rendered):
+    """Credit for applying the change belongs to a person, however it is worded."""
     assert "Applied by a developer, not by ClauseCI." in source
-    assert "did not push or merge code" in source
+
+    # The boundary has to be stated somewhere the visitor can read, but the
+    # wording is free to change. Match the claim, not one sentence.
+    applied = re.search(r"developer applie[sd]", rendered)
+    assert applied, "the page never says a developer applies the correction"
+
+    holds_the_line = re.search(
+        r"ClauseCI (?:does not|did not) (?:push|merge)|"
+        r"does not merge pull requests|does not push remediation", rendered)
+    assert holds_the_line, "the page never states that ClauseCI leaves git to a person"
 
 
 def test_pub17_the_ui_never_claims_auto_remediation(source):
@@ -362,10 +372,25 @@ def test_dep04_the_page_needs_no_session_state_to_render():
 
 
 def test_dep05_no_css_rule_can_hide_the_whole_application():
-    css = THEME.read_text()
-    for reckless in ("body {", "html {", ".stApp {", "stAppViewContainer",
-                     'data-testid="stMain"', "section.main"):
-        assert reckless not in css, f"CSS targets {reckless}, which can blank the page"
+    """Blanking is the hazard, not styling.
+
+    A pinned theme has to paint the page ground, so touching `body` or `.stApp`
+    is legitimate and necessary. What must never happen is a broad selector that
+    hides or erases the application.
+    """
+    css = re.sub(r"/\*.*?\*/", "", THEME.read_text(), flags=re.S)
+    broad = (r"\bbody\b", r"\bhtml\b", r"\.stApp\b", r"stAppViewContainer",
+             r'data-testid="stMain"', r"section\.main\b")
+    blanking = ("display:none", "display: none", "visibility:hidden",
+                "visibility: hidden", "opacity:0", "opacity: 0")
+
+    for selector, block in re.findall(r"([^{}]+)\{([^}]*)\}", css):
+        selector = selector.strip()
+        if any(re.search(term, selector) for term in broad):
+            for rule in blanking:
+                assert rule not in block, \
+                    f"`{selector}` would blank the application: {rule}"
+
     # hiding is allowed, but only against a named Streamlit test id
     for line in css.splitlines():
         if "visibility: hidden" in line or "display: none" in line:
@@ -470,3 +495,144 @@ def test_dep10_the_entry_point_calls_the_page_rather_than_importing_it():
         "ui/console.py draws at import time again: "
         f"{[ast.unparse(n)[:60] for n in top_level_effects]}"
     )
+
+
+# --- PRES / THEME ------------------------------------------------------------
+# Presentation integrity. A judge should understand that ClauseCI runs a real
+# multi app release workflow before they meet any of its boundaries, and the
+# page has to read well on a projector and in a screen recording.
+
+CONSOLE_TEXT = CONSOLE.read_text()
+
+
+@pytest.fixture(scope="module")
+def rendered() -> str:
+    """Everything the page actually draws, as one string."""
+    apptest = pytest.importorskip("streamlit.testing.v1")
+    run = apptest.AppTest.from_file(str(ENTRY), default_timeout=180)
+    run.run()
+    assert not run.exception, f"the page raised while rendering: {run.exception}"
+    blocks = [block.value for block in run.markdown]
+    blocks += [block.value for block in run.caption]
+    return " ".join(blocks)
+
+
+@pytest.mark.parametrize("claim", [
+    "What ClauseCI does",
+    "publishes the required GitHub check",       # it owns the release decision
+    "proposes a supported correction",           # it authors the correction
+    "verifies the workflow after a developer",   # it verifies the corrected commit
+])
+def test_pres01_the_capability_statement_is_on_the_page(rendered, claim):
+    assert claim in rendered, f"the public UI never says: {claim}"
+
+
+def test_pres02_the_workflow_names_all_three_apps():
+    chain = CONSOLE_TEXT[CONSOLE_TEXT.index("What ClauseCI does"):]
+    chain = chain[:chain.index("### The change")]
+    for app in ("GitHub", "Google Drive", "Slack"):
+        assert app in chain, f"the headline workflow never mentions {app}"
+
+
+def test_pres03_the_same_slack_case_resolution_is_visible():
+    assert "resolves the <b>same</b> Slack case" in CONSOLE_TEXT or \
+           "Resolve the same case" in CONSOLE_TEXT, \
+           "the UI never says the same Slack case resolves"
+
+
+def test_pres04_capabilities_are_presented_before_boundaries():
+    """Position, not wording. Guardrails belong after the product."""
+    does = CONSOLE_TEXT.index("### What ClauseCI does")
+    bounds = CONSOLE_TEXT.index("### Safety boundaries")
+    assert does < bounds, "Safety boundaries is presented before what ClauseCI does"
+
+    for heading in ("### Customer impact", "### From conflict to verified resolution",
+                    "### Why this is an agent", "### Where the model sits"):
+        assert CONSOLE_TEXT.index(heading) < bounds, \
+            f"Safety boundaries is presented before {heading}"
+
+
+def test_pres05_no_capability_section_leads_with_what_the_product_declines():
+    """A negative about ClauseCI may appear only inside Safety boundaries."""
+    before_bounds = CONSOLE_TEXT[:CONSOLE_TEXT.index("### Safety boundaries")]
+    offenders = re.findall(
+        r"ClauseCI (?:does not|did not|cannot|can not|will not|never)[^<\"']*",
+        before_bounds)
+    assert not offenders, f"the product sounds passive above its boundaries: {offenders}"
+
+
+def test_pres06_website_limits_are_not_stated_as_product_limits(rendered):
+    """'No write credentials' is true of this site, not of ClauseCI."""
+    claims = [m.start() for m in re.finditer(r"no provider write credentials", rendered)]
+    assert claims, "the page never states the public deployment boundary"
+    for start in claims:
+        sentence = rendered[max(0, start - 260):start + 60]
+        assert "website" in sentence or "site" in sentence, (
+            "a public deployment limitation is written as if it were a product "
+            f"limitation: {sentence.strip()[:140]}"
+        )
+
+
+def test_pres07_the_live_demo_url_is_in_the_readme():
+    readme = (ROOT / "README.md").read_text()
+    assert "streamlit.app" in readme, "the README never links the live demo"
+    assert readme.index("streamlit.app") < readme.index("## Safety boundaries"), \
+        "the live demo link is buried below the boundaries section"
+
+
+@pytest.mark.parametrize("path,expected", [
+    (("false_green", "count"), 0),
+    (("false_green", "unsafe_or_unresolved_cases"), 11),
+    (("verified_task_completion", "passed"), 2),
+    (("safe_case_completion", "passed"), 5),
+    (("recovery_success", "passed"), 5),
+])
+def test_pres08_measured_metrics_are_unchanged(summary, path, expected):
+    """A copy change must not move a number."""
+    node = summary["metrics"]
+    for key in path:
+        node = node[key]
+    assert node == expected
+
+
+def test_theme01_the_configured_public_theme_is_light():
+    config = [l.strip() for l in (ROOT / ".streamlit" / "config.toml").read_text()
+              .splitlines() if l.strip() and not l.strip().startswith("#")]
+    assert 'base = "light"' in config, "the deployed theme is not pinned to light"
+    background = next(l for l in config if l.startswith("backgroundColor"))
+    assert "#FFFFFF" in background.upper(), f"the page ground is not white: {background}"
+
+
+def test_theme02_no_dark_page_ground_survives_in_the_css():
+    """Catch a dark full-page background left behind by the old theme."""
+    css = THEME.read_text()
+    ground = re.search(r"\.stApp[^{]*\{([^}]*)\}", css)
+    assert ground, "theme CSS never sets the page ground, so it follows the browser"
+
+    def luminance(hex_colour: str) -> float:
+        r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255
+
+    for colour in re.findall(r"#[0-9A-Fa-f]{6}", ground.group(1)):
+        assert luminance(colour) > 0.8, f"the page ground is dark: {colour}"
+
+    tokens = re.search(r":root\s*\{([^}]*)\}", css)
+    assert tokens, "the palette is not defined as tokens in one place"
+    for name in ("--cci-bg", "--cci-card", "--cci-panel"):
+        value = re.search(rf"{name}:\s*(#[0-9A-Fa-f]{{6}})", tokens.group(1))
+        assert value and luminance(value.group(1)) > 0.8, \
+            f"{name} is not a light surface"
+
+
+@pytest.mark.parametrize("status_class", ["b-bad", "b-good", "b-info", "b-flat",
+                                          "cci-card", "cci-step", "cci-badge"])
+def test_theme03_status_classes_survive_the_theme_change(status_class):
+    assert f".{status_class}" in THEME.read_text(), f"{status_class} was dropped"
+
+
+def test_theme04_no_component_depends_on_the_viewers_dark_mode():
+    for path in (THEME, CONSOLE):
+        text = path.read_text()
+        assert "prefers-color-scheme" not in text, \
+            f"{path.name} lets the browser theme change the page"
+        assert "@media (prefers" not in text

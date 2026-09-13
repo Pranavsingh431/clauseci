@@ -206,7 +206,28 @@ def main() -> None:
     correction = evidence["correction"]
     preferred = next(c for c in unsafe["candidates"]
                      if c["candidate_id"] == unsafe["preferred_candidate_id"])
-    regression_tests = 416
+    regression_tests = 441
+
+    # Customer impact, derived from the recorded evidence rather than written in
+    # by hand, so the headline numbers cannot drift away from the run.
+    unsafe_table = findings_by_customer(unsafe)
+    corrected_table = findings_by_customer(corrected)
+    after: dict = {}
+    for value in preferred["effective_values"]:
+        after.setdefault(value["customer_id"], {})[value["category"]] = value["value"]
+
+    REQUESTED = ("application_logs", "diagnostic_logs")
+    outcomes_total = outcomes_preserved = 0
+    customers_total = customers_preserved = 0
+    for customer_id in ("acme-corp", "globex", "acme-labs"):
+        kept = 0
+        for category in REQUESTED:
+            outcomes_total += 1
+            if after[customer_id][category] == unsafe_table[customer_id][category]["actual_value"]:
+                outcomes_preserved += 1
+                kept += 1
+        customers_total += 1
+        customers_preserved += kept == len(REQUESTED)
 
 
     # ─────────────────────────────────────────────────────────────── hero
@@ -215,13 +236,15 @@ def main() -> None:
     with head:
         render_header()
         st.markdown(
-            '<div class="cci-lede">ClauseCI checks proposed configuration changes against '
-            'the agreements that actually govern each customer, proposes a supported '
-            'correction, and verifies the engineering workflow end to end.</div>',
+            '<div class="cci-lede">ClauseCI runs the customer aware release workflow '
+            'across GitHub, Google Drive and Slack. It catches a configuration change '
+            'that breaks one customer\'s signed agreement, proposes a correction that '
+            'keeps the change for every other customer, and verifies the result on the '
+            'real providers.</div>',
             unsafe_allow_html=True)
         st.markdown(theme.spacer(12), unsafe_allow_html=True)
         st.markdown(pill("GitHub") + pill("Google Drive") + pill("Slack")
-                    + badge("PUBLIC EVIDENCE DEMO", "info"), unsafe_allow_html=True)
+                    + badge("LIVE EVIDENCE FROM VERIFIED RUNS", "info"), unsafe_allow_html=True)
 
     with links:
         st.markdown(theme.spacer(26), unsafe_allow_html=True)
@@ -232,9 +255,10 @@ def main() -> None:
                        width="stretch")
 
     st.markdown(
-        '<div class="cci-note" style="margin-top:10px">This public demo is built from '
-        'sanitized evidence captured during verified ClauseCI runs. The execution '
-        'backend is intentionally disabled here, and this site holds no provider '
+        '<div class="cci-note" style="margin-top:10px"><b>ClauseCI</b> runs a real '
+        'authenticated workflow across GitHub, Google Drive and Slack. <b>This website</b> '
+        'is a safe interactive walkthrough of that workflow, built from sanitized evidence '
+        'captured during verified runs, and it carries no provider write '
         'credentials.</div>', unsafe_allow_html=True)
     st.divider()
 
@@ -245,7 +269,66 @@ def main() -> None:
     # ─────────────────────────────────────────────────────────── overview
 
     with overview:
-        st.markdown("### The change that looked harmless")
+
+        # What ClauseCI does comes first. A judge should know the product runs a
+        # real multi app workflow before they meet any of its boundaries.
+        st.markdown("### What ClauseCI does")
+        st.markdown(
+            '<div class="cci-lede">ClauseCI owns the customer aware release decision '
+            'and the engineering workflow around it. It reads a proposed GitHub '
+            'configuration change, resolves the effective configuration for each '
+            'customer, interprets the agreements that govern those customers from '
+            'Google Drive, detects contract specific conflicts, proposes a supported '
+            'correction, publishes the required GitHub check, maintains the '
+            'engineering case in Slack, and verifies the workflow after a developer '
+            'applies the correction.</div>', unsafe_allow_html=True)
+        st.markdown(theme.spacer(14), unsafe_allow_html=True)
+        st.markdown(theme.chain([
+            ("GitHub pull request", "start"),
+            ("Resolve effective customer configuration", ""),
+            ("Read governing agreements", ""),
+            ("Extract typed obligations", ""),
+            ("Detect customer specific conflict", ""),
+            ("Propose scoped correction", ""),
+            ("Publish required GitHub check", "act"),
+            ("Maintain Slack engineering case", "act"),
+            ("Verify provider state", "act"),
+            ("Re-analyze corrected commit", ""),
+            ("Resolve the same case", "end"),
+        ]), unsafe_allow_html=True)
+
+        st.markdown(theme.spacer(26), unsafe_allow_html=True)
+        st.markdown("### The change, and what ClauseCI proposed")
+
+        story, proposal = st.columns([1.25, 1])
+        with story:
+            st.markdown(
+                '<div class="cci-lede">One change requests 90 day application and '
+                'diagnostic retention for three customers.</div>',
+                unsafe_allow_html=True)
+            st.markdown(theme.spacer(10), unsafe_allow_html=True)
+            st.markdown(
+                "- **Globex** permits 90 days.\n"
+                "- **Acme Labs** permits 180 days.\n"
+                "- **Acme Corporation**'s current signed amendment caps the relevant "
+                "logs at 30 days.")
+            st.markdown(
+                '<div class="cci-note">A blanket rollback to 30 days would be safe, but '
+                'it would remove the requested behaviour from two customers that are '
+                'entitled to it.</div>', unsafe_allow_html=True)
+        with proposal:
+            st.markdown(card(
+                '<div class="cci-label">ClauseCI proposes</div>',
+                '<div class="cci-value" style="margin-top:6px">'
+                'Acme Corporation &nbsp;<b>30 days</b><br>'
+                'Globex &nbsp;<b>90 days</b><br>'
+                'Acme Labs &nbsp;<b>90 days</b></div>',
+                f'<div class="cci-note" style="margin-top:10px">Preserves the requested '
+                f'behaviour for <b>{customers_preserved} of {customers_total}</b> customers, '
+                f'or <b>{outcomes_preserved} of {outcomes_total}</b> requested category '
+                f'outcomes.</div>', kind="pref"), unsafe_allow_html=True)
+
+        st.markdown(theme.spacer(22), unsafe_allow_html=True)
         a, b, c, d = st.columns(4)
         a.markdown(card(
             field("Original change", "90 days for every customer"),
@@ -269,12 +352,6 @@ def main() -> None:
         st.caption("Application and diagnostic retention in days. Audit evidence is shown "
                    "separately, because not every agreement covers it.")
 
-        unsafe_table = findings_by_customer(unsafe)
-        corrected_table = findings_by_customer(corrected)
-        after = {}
-        for value in preferred["effective_values"]:
-            after.setdefault(value["customer_id"], {})[value["category"]] = value["value"]
-
         rows = []
         for customer_id in ("acme-corp", "globex", "acme-labs"):
             before = unsafe_table[customer_id]["application_logs"]
@@ -289,24 +366,57 @@ def main() -> None:
             })
         st.dataframe(rows, width="stretch", hide_index=True)
 
-        labs_audit = unsafe_table["acme-labs"]["audit_logs"]
         st.markdown(
-            f'<div class="cci-note">Acme Labs audit retention has '
-            f'<b>no represented obligation</b> in the reviewed sources. It is reported as '
-            f'such rather than as a pass, and no limit is inferred from it. It is not a '
-            f'180 day audit cap.</div>', unsafe_allow_html=True)
+            '<div class="cci-note">Acme Labs audit retention has '
+            '<b>no represented obligation</b> in the reviewed sources. It is reported as '
+            'such rather than as a pass, and no limit is inferred from it. It is not a '
+            '180 day audit cap.</div>', unsafe_allow_html=True)
 
-        st.markdown(theme.spacer(22), unsafe_allow_html=True)
-        st.markdown("### What ClauseCI will not do")
-        left, right = st.columns(2)
-        left.markdown(
-            "- Does not merge pull requests\n"
-            "- Does not push remediation commits\n"
-            "- Does not send email")
-        right.markdown(
-            "- Does not execute code from the analyzed pull request\n"
-            "- Does not treat missing evidence as permission\n"
-            "- Does not claim universal legal compliance")
+        st.markdown(theme.spacer(26), unsafe_allow_html=True)
+        st.markdown("### From conflict to verified resolution")
+        st.caption("ClauseCI proposed the correction. A developer applied it. ClauseCI "
+                   "then verified the new commit and closed the workflow.")
+
+        one, two, three = st.columns(3)
+        one.markdown(step(
+            "Unsafe commit",
+            f'<span class="cci-mono">{unsafe["head_sha"][:8]}</span> &nbsp;'
+            + badge("CONFLICT", "bad")
+            + '<div class="cci-note" style="margin-top:8px">ClauseCI publishes the '
+              'required GitHub <b>failure</b> and opens one Slack engineering case.</div>',
+            kind="bad"), unsafe_allow_html=True)
+        two.markdown(step(
+            "Scoped correction",
+            badge("PROPOSED BY CLAUSECI", "info")
+            + '<div class="cci-note" style="margin-top:8px">A customer scoped '
+              'configuration, not a blanket rollback. <b>A developer applies it</b> in a '
+              'new commit.</div>', kind="dev"), unsafe_allow_html=True)
+        three.markdown(step(
+            "Corrected commit",
+            f'<span class="cci-mono">{corrected["head_sha"][:8]}</span> &nbsp;'
+            + badge("PASS_SCOPED", "good")
+            + '<div class="cci-note" style="margin-top:8px">ClauseCI publishes GitHub '
+              '<b>success</b> and resolves the <b>same</b> Slack case. The old failing '
+              'result stays on the old commit.</div>', kind="good"), unsafe_allow_html=True)
+
+        st.markdown(theme.spacer(26), unsafe_allow_html=True)
+        st.markdown("### Why this is an agent")
+        agent_left, agent_right = st.columns([1.3, 1])
+        with agent_left:
+            st.markdown(
+                '<div class="cci-lede">ClauseCI is not a contract search tool and not a '
+                'chatbot. It performs a multi step release workflow across GitHub, Google '
+                'Drive and Slack. The model interprets heterogeneous contract language '
+                'into typed obligations. Deterministic code resolves configuration, '
+                'decides release state, constructs bounded corrections, authorizes '
+                'external actions, persists intended effects, verifies provider state and '
+                'recovers uncertain writes.</div>', unsafe_allow_html=True)
+        with agent_right:
+            st.markdown(card(
+                '<div class="cci-value">AI interprets language.</div>',
+                '<div class="cci-value" style="margin-top:4px">Deterministic code controls '
+                'release decisions and external actions.</div>', kind="plain"),
+                unsafe_allow_html=True)
 
 
     # ─────────────────────────────────────────────────────────── decision
@@ -408,9 +518,10 @@ def main() -> None:
         st.markdown("### The patch ClauseCI proposed")
         st.code(correction["patch"] or "", language="diff")
         st.markdown(
-            '<div class="cci-note">A developer applied this change in a separate commit. '
-            '<b>ClauseCI did not push or merge code.</b> A test greps the runtime package '
-            'for git operations to keep it that way.</div>', unsafe_allow_html=True)
+            '<div class="cci-note"><b>ClauseCI authored this patch</b> and a developer '
+            'applied it in a separate commit. Handing the change to a person is a '
+            'deliberate boundary, and a test greps the runtime package for git '
+            'operations to hold it.</div>', unsafe_allow_html=True)
 
         st.markdown(theme.spacer(20), unsafe_allow_html=True)
         st.markdown("### Verified across real apps")
@@ -663,6 +774,30 @@ def main() -> None:
                 'number cannot justify one. Contract text is evidence, never instruction.</div>',
             ), unsafe_allow_html=True)
 
+
+        # Deliberately last. These are design decisions about destructive actions,
+        # not gaps in what the product can do, so they belong after the capability,
+        # decision, reliability and architecture content rather than in front of it.
+        st.markdown(theme.spacer(26), unsafe_allow_html=True)
+        st.markdown("### Safety boundaries")
+        st.caption("ClauseCI is intentionally authoritative about the release decision, "
+                   "but conservative about destructive actions.")
+        bounds_left, bounds_right = st.columns(2)
+        bounds_left.markdown(
+            "- Release decisions are bound to the exact analyzed commit and contract "
+            "snapshot.\n"
+            "- Missing evidence does not become permission.\n"
+            "- ClauseCI does not merge pull requests.\n"
+            "- ClauseCI does not push remediation commits.")
+        bounds_right.markdown(
+            "- ClauseCI does not execute code from the analyzed pull request.\n"
+            "- ClauseCI does not send email.\n"
+            "- ClauseCI does not claim universal legal compliance.")
+        st.markdown(
+            '<div class="cci-note">Separately from the product: <b>this public website</b> '
+            'is a safe interactive evidence experience built from sanitized captured runs, '
+            'and this website carries no provider write credentials. ClauseCI itself '
+            'runs the authenticated multi app workflow.</div>', unsafe_allow_html=True)
 
     st.divider()
     print("  render reached the end of the page: yes", flush=True)
