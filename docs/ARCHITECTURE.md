@@ -411,15 +411,20 @@ An unrelated ClauseCI message is not accepted just because it exists.
 
 A receipt is `VERIFIED` only when every required effect was observed with
 matching fields. **GitHub alone is not success for a conflict.** If the status is
-written and the Slack case cannot be confirmed, the receipt is `PARTIAL`.
+written and the Slack case cannot be confirmed, the receipt is not verified. It
+is `UNKNOWN` when the outcome cannot be established, and `PARTIAL` when part of
+the work definitively did not complete.
 
-### What is not claimed yet
+### What is not claimed
 
-No durable exactly once behaviour, no restart recovery, no lost response
-reconciliation, and no effect journal. Re-running on the same head writes a
-second GitHub status record, which is how commit statuses work, and reuses the
-existing Slack case rather than opening another. Durable reconciliation is later
-work.
+Not exactly once execution. There is no distributed transaction and no atomic
+commit across two providers, and neither is claimed anywhere.
+
+What does exist, added later and described in the reliability section below: a
+durable journal of intended effects, restart recovery, lost response
+reconciliation, and an explicit `UNKNOWN` state. Re-running on the same head
+does not append a second identical GitHub status, because the latest record in
+the context is adopted when it already says what this analysis intends.
 
 Gmail is verified infrastructure and is not part of this workflow.
 

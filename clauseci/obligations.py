@@ -126,4 +126,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from clauseci.cli_errors import run_cli
+
+    sys.exit(run_cli(main))

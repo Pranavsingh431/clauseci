@@ -11,6 +11,13 @@ from evals.record import Mode
 
 #: A case whose correct answer is "do not release". A false green here is a
 #: release critical failure.
+#:
+#: Only a decision about an ACTUAL head counts. A candidate's feasibility state
+#: is also spelled CONFLICT, but a candidate is a hypothetical configuration
+#: that is never released, so it does not belong in this denominator. Scenario
+#: D08 is the case to remember: candidate A conflicts, and that is a correct
+#: result about a proposal, not a release decision. `evals/audit.py` checks that
+#: this exclusion is deliberate rather than accidental.
 UNSAFE_EXPECTED = {"CONFLICT", "REVIEW_REQUIRED"}
 GREEN_RESULTS = {"PASS_SCOPED", "NO_SUPPORTED_CHANGE"}
 
