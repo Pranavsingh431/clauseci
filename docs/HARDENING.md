@@ -10,7 +10,7 @@ Runtime commit at the time of hardening: `ed7252a8d8dbc0f36ef3d0370ccdc5eee4ee80
 
 | Check | Result |
 |---|---|
-| pytest regression suite | 400 passed |
+| pytest regression suite | 401 passed |
 | Core evaluation, no provider mutation | 65 records, 65 passed |
 | Full evaluation including live read only confirmation | 70 records, 70 passed |
 | **False greens** | **0 of 11 unsafe or unresolved cases** |

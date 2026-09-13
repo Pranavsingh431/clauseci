@@ -140,7 +140,7 @@ unsafe, corrected = evidence["unsafe"], evidence["corrected"]
 correction = evidence["correction"]
 preferred = next(c for c in unsafe["candidates"]
                  if c["candidate_id"] == unsafe["preferred_candidate_id"])
-regression_tests = 400
+regression_tests = 401
 
 
 # ─────────────────────────────────────────────────────────────── hero
