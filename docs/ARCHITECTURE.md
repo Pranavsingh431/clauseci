@@ -160,6 +160,88 @@ Building one calls no model and writes nothing to any provider.
 
     python -m clauseci.snapshot --pr <pull request URL>
 
+## Obligation analysis
+
+Step 4 is the only place a model is used. It reads contract language and returns
+structured data. It is given no tools, so it cannot write a status, post a
+message, call an API or take any action on anything it reads.
+
+The work is split so the model never holds authority it cannot be checked on.
+
+| Owned by the model | Owned by deterministic code |
+|---|---|
+| what a clause says | which customer a finding belongs to |
+| the number and unit in the text | which documents belong to that customer |
+| which categories a clause names | whether a source may establish a current obligation |
+| which of two competing clauses the language says controls | whether the quote is real, and whether it states the claimed number |
+| | the schema, the unit, the operator, the category allowlist |
+
+### Extraction
+
+One document at a time, one customer at a time. The whole corpus is never
+handed over with the question "which contract controls". Each document produces
+zero or more candidate clauses, each with a verbatim quote.
+
+The model receives the customer identity as a task field. It is told explicitly
+that retrieved text is evidence, and that instructions found inside a document,
+a pull request or a filename carry no authority.
+
+A document with no supported retention clause returns NO_SUPPORTED_OBLIGATION
+and an empty list. That is a correct answer, not a failure. Language that cannot
+be represented without guessing returns AMBIGUOUS.
+
+### Validation
+
+Every candidate is checked before it can affect anything:
+
+* the customer exists in the registry
+* the source belongs to that customer, in both the manifest and the registry
+* the file id and content digest match the snapshot
+* the operator is `<=`, the unit is days, the value is a positive whole number
+* every category is on the allowlist
+* the quote occurs verbatim in the extracted text
+* the quote actually states the number being claimed
+
+The last two are separate checks and neither implies the other. A sentence can
+be genuinely present in a document and still say nothing about retention. The
+injection passage in `07_Acme_Security_Addendum_2026.pdf` is exactly that case:
+it quotes cleanly and supports no number.
+
+**Quote verification proves evidence binding, not legal correctness.** It shows
+the text came from that document. It does not show the reading is right. That
+limit is real and is not claimed away anywhere in this system.
+
+### Authority
+
+Deterministic elimination runs first. A source belonging to another legal
+entity, not executed, not yet effective, or outside the customer's corpus cannot
+establish a current obligation. No model is consulted for that decision. The
+source stays in the record as a rejected source with its reasons.
+
+Only when more than one eligible clause still competes for the same category is
+a second bounded semantic step used. It sees the candidate clauses, not whole
+documents.
+
+Resolution runs per category. An amendment that replaces application and
+diagnostic retention does not erase an audit clause unless its language says so.
+
+### Three outcomes
+
+`RESOLVED`, `NO_REPRESENTED_OBLIGATION`, `REVIEW_REQUIRED`. Missing, ambiguous or
+unverifiable evidence becomes REVIEW_REQUIRED or NO_REPRESENTED_OBLIGATION. It
+never becomes a pass. Phase 3 produces no pass or fail for the pull request at
+all. That is a later phase.
+
+### What is not claimed
+
+This is not general contract understanding. It supports one obligation family,
+RETENTION_UPPER_BOUND, with operator `<=`, unit days, over three log categories,
+for a fixed customer cohort. Residency, sub processors, notice periods, service
+levels and security controls are out of scope, and the documents contain such
+clauses precisely so the analyzer has to leave them alone.
+
+    python -m clauseci.obligations --pr <pull request URL>
+
 ## Model routing
 
 Verified working on OpenRouter with strict JSON schema output.

@@ -12,12 +12,17 @@ controlling signed agreement, and records a decision on the pull request.
 
 ## Status
 
-Phase 2 complete. ClauseCI can read a real pull request and its contract
-evidence, and pin all of it into one immutable, reproducible snapshot. No model
-is involved yet, and nothing outside the process is written.
+Phase 3 complete. ClauseCI reads a real pull request and its contract evidence,
+pins it into an immutable snapshot, and extracts source bound retention
+obligations from the signed agreements.
 
-The contract interpreter, the decision layer, the action layer and the
-evaluation runner are not built yet.
+On the live corpus it resolves Acme Corporation to 30 days from the executed
+amendment, recording the superseded 2025 agreement as rejected, Globex to 90
+days with a separate 365 day audit period, and Acme Labs to 180 days with no
+represented audit obligation at all.
+
+Nothing is written to GitHub, Slack, Gmail or Drive. The decision layer, the
+action layer and the evaluation runner are not built yet.
 
 See `BUILD_START_REPORT.md` for exactly what existed before the build window
 opened, and what is being built during it.
@@ -63,6 +68,14 @@ retention.
 clauseci/                    runtime package
   adapters/github.py         read only pull request and file reads
   adapters/drive.py          read only contract document reads
+  adapters/openrouter.py     the one semantic component, no tools
+  analyzer.py                obligation analysis entry point
+  obligations.py             command line entry point
+  sources.py                 trusted source manifest and derived eligibility
+  domain/obligations.py      typed obligation models
+  domain/extraction.py       candidate validation and quote binding
+  domain/authority.py        eligibility and per category resolution
+  domain/prompts.py          versioned prompts and strict schemas
   domain/models.py           typed snapshot models
   domain/snapshot.py         snapshot builder
   domain/classification.py   changed file surface classification
@@ -89,6 +102,12 @@ expected verdict cannot leak into evidence.
 Provider adapters are read only. A test greps the runtime package for status
 writes, Slack posts, Gmail drafts and non GET HTTP calls, and fails if one
 appears.
+
+The trusted source manifest holds provenance only. Whether a document may
+establish a current obligation is derived in code from its execution status,
+effective date and customer association, so that judgement is never stored as
+data. Guard tests fail if a field or value in either data file starts to look
+like an answer.
 
 ## Integration target
 
@@ -117,6 +136,21 @@ Drive and writes nothing to either.
 ```bash
 ./.venv/bin/python -m clauseci.snapshot --pr https://github.com/Pranavsingh431/clauseci-demo-saas/pull/1
 ./.venv/bin/python -m clauseci.snapshot --pr 1 --save    # also writes JSON under runs/
+```
+
+Extract the retention obligations the signed agreements actually establish. This
+calls the model, and still writes nothing to any provider.
+
+```bash
+./.venv/bin/python -m clauseci.obligations --pr 1
+./.venv/bin/python -m clauseci.obligations --pr 1 --no-cache --save
+```
+
+Measure the high risk semantic cases against the hand written oracle, with the
+cache disabled so every pass is a fresh reading.
+
+```bash
+./.venv/bin/python evals/semantic_repeatability.py --repeats 3
 ```
 
 `check.sh` verifies every provider integration, including Gmail. Unlike the

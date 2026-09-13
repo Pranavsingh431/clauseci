@@ -138,3 +138,92 @@ class FakeDriveReader:
             md5_checksum=None,
             content=content,
         )
+
+
+class StubSemanticClient:
+    """
+    A semantic client that returns canned replies. No network.
+
+    Lets the deterministic half of the analyzer be tested on its own, including
+    cases the real model happens to get right for its own reasons. If the gate
+    only works because the model behaved, it is not a gate.
+    """
+
+    def __init__(
+        self,
+        extractions: dict[str, dict] | None = None,
+        resolution: dict | None = None,
+        model: str = "stub-model",
+    ) -> None:
+        self.model = model
+        self.extractions = extractions or {}
+        self.resolution = resolution
+        self.calls: list[tuple[str, str]] = []
+
+    def structured(self, *, system, user, schema, schema_name, usage, max_tokens=3000):
+        if schema_name == "retention_resolution":
+            self.calls.append(("resolve", user))
+            if self.resolution is None:
+                raise AssertionError("a resolution was requested but none was stubbed")
+            return self.resolution
+
+        source_id = ""
+        for line in user.splitlines():
+            if line.strip().startswith("source_id"):
+                source_id = line.split()[-1]
+                break
+        self.calls.append(("extract", source_id))
+        return self.extractions.get(
+            source_id,
+            {"semantic_status": "NO_SUPPORTED_OBLIGATION", "review_reason": None,
+             "candidates": []},
+        )
+
+
+def candidate_payload(
+    value: int,
+    categories: list[str],
+    quote: str,
+    *,
+    section: str | None = "2.1",
+    execution: str | None = "EXECUTED",
+    effective: str | None = "2026-08-20",
+    supersession: str | None = None,
+    operator: str = "<=",
+    unit: str = "days",
+) -> dict:
+    return {
+        "operator": operator,
+        "value": value,
+        "unit": unit,
+        "covered_categories": categories,
+        "page": 1,
+        "section": section,
+        "quote": quote,
+        "document_declared_execution_status": execution,
+        "document_declared_effective_date": effective,
+        "amendment_reference": None,
+        "supersession_reference": supersession,
+        "conditions": [],
+        "exceptions": [],
+    }
+
+
+def extraction_payload(candidates: list[dict], status: str = "EXTRACTED") -> dict:
+    return {"semantic_status": status, "review_reason": None, "candidates": candidates}
+
+
+def local_snapshot():
+    """A snapshot whose evidence corpus is the repository's own contract PDFs."""
+    from clauseci.domain.snapshot import build_analysis_snapshot
+    from clauseci.registry import load_registry
+
+    return build_analysis_snapshot(
+        "1", None, load_registry(), FakeGitHubReader(), FakeDriveReader()
+    )
+
+
+def local_text_provider():
+    from clauseci.domain.evidence_text import EvidenceTextProvider, LocalBytesSource
+
+    return EvidenceTextProvider(LocalBytesSource(CONTRACTS), cache_dir=None, use_cache=False)

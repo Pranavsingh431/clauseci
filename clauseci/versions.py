@@ -28,3 +28,24 @@ RETENTION_STATUS_CONTEXT = "ClauseCI / retention-compliance"
 
 # Used by the pre build connectivity script only. Never for product decisions.
 SMOKE_TEST_STATUS_CONTEXT = "ClauseCI / smoke-test"
+
+
+# ---------------------------------------------------------------- Phase 3
+# The one model used for semantic interpretation. Pinned, not routed.
+# Validated during preparation against the supersession case.
+SEMANTIC_MODEL = "anthropic/claude-sonnet-4.5"
+
+# Wording of the extraction and resolution prompts. Bump on any wording change,
+# because a cached answer from an older prompt must not be reused.
+SEMANTIC_PROMPT_VERSION = "retention-extract-1.0.0"
+
+# Shape of the structured output the model must return.
+SEMANTIC_SCHEMA_VERSION = "candidate-obligation-1.0.0"
+
+# The single obligation family this build supports.
+SUPPORTED_OBLIGATION_FAMILY = "RETENTION_UPPER_BOUND"
+
+# Deterministic settings. One request plus at most one repair attempt.
+SEMANTIC_TEMPERATURE = 0.0
+SEMANTIC_TIMEOUT_SECONDS = 90
+SEMANTIC_MAX_REPAIR_ATTEMPTS = 1

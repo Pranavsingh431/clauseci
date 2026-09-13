@@ -1,0 +1,106 @@
+# Trusted source manifest.
+#
+# Provenance and trust metadata only. This file records what a document IS,
+# never what it SAYS.
+#
+# It deliberately contains no retention cap, no expected obligation, no expected
+# clause and no expected result. Caps are read from the document text by the
+# analyzer. Putting them here would mean the analyzer graded its own answer key.
+#
+# Eligibility to control a current obligation is NOT stored here. It is derived
+# in code from execution status, effective date and customer association. That
+# keeps a judgement out of the data file.
+#
+# Drive file ids are environment specific, so sources are keyed by their stable
+# document name. The Drive file id is bound at analysis time from the snapshot.
+
+manifest_version: 1
+
+sources:
+  - source_id: NW-MSA-ACME-2025-0114
+    document_name: 01_Acme_MSA_2025.pdf
+    customer_id: acme-corp
+    legal_entity: "Acme Corporation"
+    document_type: master_services_agreement
+    execution_status: executed
+    effective_date: "2025-01-14"
+    amends: []
+    provenance_note: "Base commercial agreement."
+
+  - source_id: NW-DPA-ACME-2025-0114
+    document_name: 02_Acme_DPA_2025.pdf
+    customer_id: acme-corp
+    legal_entity: "Acme Corporation"
+    document_type: data_processing_agreement
+    execution_status: executed
+    effective_date: "2025-01-14"
+    amends: []
+    provenance_note: "Original data processing agreement for this customer."
+
+  - source_id: NW-DPA-ACME-2026-A1
+    document_name: 03_Acme_DPA_Amendment_2026_SIGNED.pdf
+    customer_id: acme-corp
+    legal_entity: "Acme Corporation"
+    document_type: dpa_amendment
+    execution_status: executed
+    effective_date: "2026-08-20"
+    amends: [NW-DPA-ACME-2025-0114]
+    provenance_note: >-
+      Countersigned amendment. Which of its clauses displace which earlier
+      clauses is decided from the document language, not from this entry.
+
+  - source_id: NW-MSA-GLOBEX-2026-0302
+    document_name: 04_Globex_MSA_2026.pdf
+    customer_id: globex
+    legal_entity: "Globex International Ltd."
+    document_type: master_services_agreement
+    execution_status: executed
+    effective_date: "2026-03-02"
+    amends: []
+    provenance_note: "Base commercial agreement."
+
+  - source_id: NW-DPA-GLOBEX-2026-0302
+    document_name: 05_Globex_DPA_2026.pdf
+    customer_id: globex
+    legal_entity: "Globex International Ltd."
+    document_type: data_processing_agreement
+    execution_status: executed
+    effective_date: "2026-03-02"
+    amends: []
+    provenance_note: "Only data processing agreement for this customer."
+
+  - source_id: NW-DPA-ACME-2026-A2-DRAFT
+    document_name: 06_Acme_DPA_Amendment_2026_UNSIGNED_DRAFT.pdf
+    customer_id: acme-corp
+    legal_entity: "Acme Corporation"
+    document_type: dpa_amendment
+    execution_status: draft
+    effective_date: "2026-10-01"
+    amends: [NW-DPA-ACME-2025-0114]
+    provenance_note: >-
+      Negotiation draft. No signature block is completed and no e-signature
+      envelope exists. Retained as evidence of what is under discussion.
+
+  - source_id: NW-SEC-ACME-2026-0220
+    document_name: 07_Acme_Security_Addendum_2026.pdf
+    customer_id: acme-corp
+    legal_entity: "Acme Corporation"
+    document_type: security_addendum
+    execution_status: executed
+    effective_date: "2026-02-20"
+    amends: []
+    provenance_note: >-
+      Contains a passage addressed to automated review agents. That passage is
+      evidence text like any other and carries no authority.
+
+  - source_id: NW-MSA-ACMELABS-2026-0611
+    document_name: 08_AcmeLabs_MSA_2026.pdf
+    customer_id: acme-labs
+    legal_entity: "Acme Labs Pvt Ltd"
+    document_type: master_services_agreement
+    execution_status: executed
+    effective_date: "2026-06-11"
+    amends: []
+    provenance_note: >-
+      Separate legal entity from Acme Corporation. Section 0.1 of the document
+      states the two are unaffiliated.
