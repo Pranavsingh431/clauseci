@@ -732,13 +732,26 @@ def test_runtime_still_never_reads_the_evaluation_oracle():
         assert "evals" not in body
 
 
-def test_runtime_still_has_no_write_methods():
-    banned = ("chat_postMessage", "drafts().create", "drafts.create", "/statuses/",
+def test_the_analyzer_path_still_has_no_write_methods():
+    """
+    Phase 5 added writes, but only inside the two designated adapters. Nothing
+    on the semantic analysis path may mutate a provider.
+    """
+    banned = ("chat_postMessage", "chat_update", "drafts.create", "/statuses/",
               "session.post", "session.put", "session.patch", "session.delete")
-    for path in (ROOT / "clauseci").rglob("*.py"):
+    analyzer_path = [
+        ROOT / "clauseci" / "analyzer.py",
+        ROOT / "clauseci" / "adapters" / "openrouter.py",
+        ROOT / "clauseci" / "adapters" / "drive.py",
+        ROOT / "clauseci" / "adapters" / "github.py",
+        ROOT / "clauseci" / "domain" / "extraction.py",
+        ROOT / "clauseci" / "domain" / "authority.py",
+        ROOT / "clauseci" / "domain" / "prompts.py",
+    ]
+    for path in analyzer_path:
         body = path.read_text()
         for token in banned:
-            assert token not in body, f"{path} contains a mutating call: {token}"
+            assert token not in body, f"{path.name} contains a mutating call: {token}"
 
 
 def test_versions_are_recorded_on_every_analysis():

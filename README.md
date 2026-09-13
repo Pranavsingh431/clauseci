@@ -28,8 +28,18 @@ it and pinning only Acme back, preserving 4 of the 6 requested outcomes. That
 correction is a proposal. It is not applied, and it does not turn the current
 head green.
 
-Nothing is written to GitHub, Slack, Gmail or Drive. The action layer and the
-evaluation runner are not built yet.
+It then publishes that decision. The failing commit status lands on the exact
+analyzed commit under `ClauseCI / retention-compliance`, which is a required
+check on the demo repository's protected main branch, so the pull request cannot
+be merged through the normal flow while it fails. One Slack engineering case
+carries the customer, the clause, the quote and the proposed correction.
+
+Both providers are then read back and checked field by field. The run is only
+recorded as verified when both match. Google Drive stays read only and Gmail is
+not used.
+
+The evaluation runner is not built yet, and neither is durable reconciliation
+across restarts.
 
 See `BUILD_START_REPORT.md` for exactly what existed before the build window
 opened, and what is being built during it.
@@ -78,7 +88,13 @@ clauseci/                    runtime package
   adapters/openrouter.py     the one semantic component, no tools
   analyzer.py                obligation analysis entry point
   obligations.py             command line entry point
+  run.py                     the product command, read only by default
+  workflow.py                execution sequencing and verification
   decide.py                  scoped release decision and its entry point
+  adapters/github_write.py   commit status writes, nothing else
+  adapters/slack_write.py    one engineering case, nothing else
+  domain/execution.py        plan, action policy, receipt
+  domain/case_message.py     the Slack case and the fields verification checks
   domain/decision.py         decision states, dispositions, the predicate
   domain/candidates.py       three correction constructors and ranking
   domain/rendering.py        patch rendering, verified by re-parsing
@@ -170,6 +186,13 @@ only, and the correction is never applied.
 ```bash
 ./.venv/bin/python -m clauseci.decide --pr 1
 ./.venv/bin/python -m clauseci.decide --pr 1 --save
+```
+
+Run the whole workflow. Read only unless you ask for writes.
+
+```bash
+./.venv/bin/python -m clauseci.run --pr 1              # analyse and print, writes nothing
+./.venv/bin/python -m clauseci.run --pr 1 --execute    # publish to GitHub and Slack
 ```
 
 `check.sh` verifies every provider integration, including Gmail. Unlike the

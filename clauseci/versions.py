@@ -58,3 +58,16 @@ DECISION_SCHEMA_VERSION = "1.0.0"
 # The ranking and candidate construction rules. Bump when the policy changes,
 # because the same inputs would then produce a different preferred candidate.
 DECISION_POLICY_VERSION = "scoped-retention-decision-1.0.0"
+
+
+# ---------------------------------------------------------------- Phase 5
+# The rules mapping a decision to external effects. Bump when the mapping
+# changes, because the same decision would then produce different writes.
+EXECUTION_POLICY_VERSION = "bounded-execution-1.0.0"
+
+# Shape of the serialized ExecutionReceipt.
+RECEIPT_SCHEMA_VERSION = "1.0.0"
+
+# Namespace for stable case identity. Keeps demo cases separate from anything
+# else that might later share a repository.
+CASE_NAMESPACE = "clauseci-demo"

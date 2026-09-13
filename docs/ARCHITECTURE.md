@@ -344,6 +344,88 @@ policy, decision policy, semantic model and prompt versions.
 
     python -m clauseci.decide --pr <pull request URL>
 
+## Bounded execution
+
+Writes happen only when a person asks for them. The product command is read
+only by default and needs `--execute` before it touches anything.
+
+Every write is a deterministic consequence of a decision that was already
+computed. No model is consulted during execution, and no model object is ever
+handed a write adapter. A test asserts the semantic client takes an API key and
+a model name and nothing else.
+
+### Order
+
+    analysis complete
+      build execution plan
+      freshness recheck
+      GitHub status write
+      GitHub read back and verify
+      Slack create or update case
+      Slack read back and verify
+      seal the execution receipt
+
+### Action policy
+
+| Decision | GitHub status | Slack |
+|---|---|---|
+| `PASS_SCOPED` | success | no case |
+| `CONFLICT` | failure | create or update one case |
+| `REVIEW_REQUIRED` | failure | create or update one case |
+| `NO_SUPPORTED_CHANGE` | success | no case |
+
+`REVIEW_REQUIRED` publishes failure rather than error. Error reads as a broken
+check, and this is a working check reporting that a person needs to look.
+
+The status context is exactly `ClauseCI / retention-compliance`, defined once in
+`versions.py`. Branch protection on the demo repository requires that string, so
+the spelling is load bearing. `ClauseCI / smoke-test` belongs to the pre build
+connectivity script and is never used for a product decision.
+
+### Case identity
+
+A case id is derived from the namespace, the repository and the pull request
+number. **The head SHA is deliberately not part of it**, so a new commit
+continues the same engineering case instead of opening a second one. The id
+appears in the Slack message as `clauseci-case:<id>`, which is what read back
+looks for.
+
+Analysis identity is separate and does move with the head SHA, the corpus digest
+and every version that could change the answer.
+
+### Freshness
+
+Immediately before the first write, the pull request head is re-fetched and
+compared exactly, and the Drive corpus is checked through provider revision
+metadata. If either moved, nothing is written and the receipt records
+`SUPERSEDED_BEFORE_EXECUTION` or `SOURCE_CHANGED_BEFORE_EXECUTION`.
+
+### Verification
+
+Both providers are read back after the write. GitHub is checked for the exact
+repository, commit, context, state and description. Slack is checked for the
+case marker, repository, pull request number, head SHA, customer, decision, the
+actual value, the represented limit, the source and the preferred correction.
+
+An unrelated ClauseCI message is not accepted just because it exists.
+
+A receipt is `VERIFIED` only when every required effect was observed with
+matching fields. **GitHub alone is not success for a conflict.** If the status is
+written and the Slack case cannot be confirmed, the receipt is `PARTIAL`.
+
+### What is not claimed yet
+
+No durable exactly once behaviour, no restart recovery, no lost response
+reconciliation, and no effect journal. Re-running on the same head writes a
+second GitHub status record, which is how commit statuses work, and reuses the
+existing Slack case rather than opening another. Durable reconciliation is later
+work.
+
+Gmail is verified infrastructure and is not part of this workflow.
+
+    python -m clauseci.run --pr <pull request URL>
+    python -m clauseci.run --pr <pull request URL> --execute
+
 ## Model routing
 
 Verified working on OpenRouter with strict JSON schema output.

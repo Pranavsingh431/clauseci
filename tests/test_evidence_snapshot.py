@@ -450,15 +450,47 @@ def test_runtime_package_never_imports_or_reads_the_oracle():
         assert "evals" not in body, f"{path} references the evaluation package"
 
 
-def test_runtime_package_has_no_write_methods():
-    """No status write, Slack post or Gmail draft may exist in Phase 2 code."""
-    banned = ("chat_postMessage", "drafts().create", "drafts.create",
+#: The only two modules allowed to mutate an external provider. Every other
+#: runtime module must stay read only, and a test enforces that.
+WRITE_ADAPTERS = {"github_write.py", "slack_write.py"}
+
+
+def test_write_capability_lives_only_in_the_designated_adapters():
+    """
+    Phase 5 added writes. The invariant is now containment, not absence.
+
+    Any mutating provider call outside the two write adapters is a defect.
+    """
+    banned = ("chat_postMessage", "chat_update", "drafts().create", "drafts.create",
               "/statuses/", "session.post", "session.put", "session.patch",
               "session.delete")
+    offenders = []
+    for path in (ROOT / "clauseci").rglob("*.py"):
+        if path.name in WRITE_ADAPTERS:
+            continue
+        body = path.read_text()
+        for token in banned:
+            if token in body:
+                offenders.append(f"{path.name}: {token}")
+    assert not offenders, f"mutating calls outside the write adapters: {offenders}"
+
+
+def test_the_write_adapters_actually_contain_the_write_capability():
+    """Guards that the test above is not passing because writes moved elsewhere."""
+    github = (ROOT / "clauseci" / "adapters" / "github_write.py").read_text()
+    slack = (ROOT / "clauseci" / "adapters" / "slack_write.py").read_text()
+    assert "/statuses/" in github
+    assert "chat_postMessage" in slack
+
+
+def test_no_gmail_write_capability_exists_anywhere_in_the_runtime():
+    """Gmail is verified infrastructure. It is not part of the workflow."""
+    banned = ('build("gmail"', "users().drafts", "drafts().create", "drafts().send",
+              "EmailMessage")
     for path in (ROOT / "clauseci").rglob("*.py"):
         body = path.read_text()
         for token in banned:
-            assert token not in body, f"{path} contains a mutating call: {token}"
+            assert token not in body, f"{path.name} contains a Gmail operation: {token}"
 
 
 # ------------------------------------------------ status context

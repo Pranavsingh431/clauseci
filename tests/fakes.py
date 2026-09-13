@@ -227,3 +227,78 @@ def local_text_provider():
     from clauseci.domain.evidence_text import EvidenceTextProvider, LocalBytesSource
 
     return EvidenceTextProvider(LocalBytesSource(CONTRACTS), cache_dir=None, use_cache=False)
+
+
+class FakeStatusWriter:
+    """In memory GitHub commit statuses. Records every write."""
+
+    def __init__(self, allowed: str = "Pranavsingh431/clauseci-demo-saas") -> None:
+        self.allowed = allowed
+        self.writes: list[dict] = []
+        #: (sha, context) -> most recent status
+        self.statuses: dict[tuple[str, str], dict] = {}
+        #: lets a test simulate provider state diverging from what was written
+        self.tamper = None
+
+    def set_commit_status(self, owner, repo, sha, *, state, context, description,
+                          target_url=None):
+        if f"{owner}/{repo}" != self.allowed:
+            raise RuntimeError(f"{owner}/{repo} is not allowlisted")
+        if len(sha) != 40:
+            raise RuntimeError(f"refusing a partial sha {sha!r}")
+        record = {"id": 1000 + len(self.writes), "state": state, "context": context,
+                  "description": description, "sha": sha}
+        self.writes.append(dict(record))
+        stored = dict(record)
+        if self.tamper:
+            stored = self.tamper(stored)
+        self.statuses[(sha, stored["context"])] = stored
+        return record
+
+    def read_commit_statuses(self, owner, repo, sha):
+        return [s for (stored_sha, _), s in self.statuses.items() if stored_sha == sha]
+
+    def latest_status_for_context(self, owner, repo, sha, context):
+        return self.statuses.get((sha, context))
+
+
+class FakeSlackWriter:
+    """In memory Slack channel holding root messages only."""
+
+    def __init__(self, channel_id: str = "C-TEST") -> None:
+        self._channel_id = channel_id
+        self.messages: dict[str, str] = {}
+        self.posts = 0
+        self.updates = 0
+        self.tamper = None
+
+    @property
+    def channel_id(self) -> str:
+        return self._channel_id
+
+    def find_case_by_marker(self, marker, limit=200):
+        from clauseci.adapters.slack_write import SlackMessageRef
+        return [SlackMessageRef(self._channel_id, ts)
+                for ts, text in sorted(self.messages.items()) if marker in text]
+
+    def post_case(self, text):
+        from clauseci.adapters.slack_write import SlackMessageRef
+        self.posts += 1
+        ts = f"170000000.{self.posts:06d}"
+        self.messages[ts] = self.tamper(text) if self.tamper else text
+        return SlackMessageRef(self._channel_id, ts)
+
+    def update_case(self, ref, text):
+        self.updates += 1
+        self.messages[ref.ts] = self.tamper(text) if self.tamper else text
+        return ref
+
+    def read_case(self, ref):
+        if ref.ts not in self.messages:
+            raise RuntimeError("not found")
+        return {"ts": ref.ts, "text": self.messages[ref.ts]}
+
+    def seed_case(self, text: str) -> str:
+        ts = f"169000000.{len(self.messages) + 1:06d}"
+        self.messages[ts] = text
+        return ts
