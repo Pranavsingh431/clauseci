@@ -12,17 +12,24 @@ controlling signed agreement, and records a decision on the pull request.
 
 ## Status
 
-Phase 3 complete. ClauseCI reads a real pull request and its contract evidence,
-pins it into an immutable snapshot, and extracts source bound retention
-obligations from the signed agreements.
+Phase 4 complete. ClauseCI reads a pull request and its contract evidence, pins
+it into an immutable snapshot, extracts source bound retention obligations from
+the signed agreements, and produces a deterministic scoped release decision with
+three bounded correction candidates.
 
-On the live corpus it resolves Acme Corporation to 30 days from the executed
-amendment, recording the superseded 2025 agreement as rejected, Globex to 90
-days with a separate 365 day audit period, and Acme Labs to 180 days with no
-represented audit obligation at all.
+On the live hero change it reports CONFLICT, because raising two default values
+puts Acme Corporation at 90 days against a 30 day cap in its executed amendment.
+Globex sits exactly at its 90 day cap and passes. Acme Labs is well under 180.
+Acme Labs audit retention has no represented obligation at all, which is reported
+as such rather than as a pass.
 
-Nothing is written to GitHub, Slack, Gmail or Drive. The decision layer, the
-action layer and the evaluation runner are not built yet.
+It then proposes keeping the change for the two customers whose agreements allow
+it and pinning only Acme back, preserving 4 of the 6 requested outcomes. That
+correction is a proposal. It is not applied, and it does not turn the current
+head green.
+
+Nothing is written to GitHub, Slack, Gmail or Drive. The action layer and the
+evaluation runner are not built yet.
 
 See `BUILD_START_REPORT.md` for exactly what existed before the build window
 opened, and what is being built during it.
@@ -71,6 +78,10 @@ clauseci/                    runtime package
   adapters/openrouter.py     the one semantic component, no tools
   analyzer.py                obligation analysis entry point
   obligations.py             command line entry point
+  decide.py                  scoped release decision and its entry point
+  domain/decision.py         decision states, dispositions, the predicate
+  domain/candidates.py       three correction constructors and ranking
+  domain/rendering.py        patch rendering, verified by re-parsing
   sources.py                 trusted source manifest and derived eligibility
   domain/obligations.py      typed obligation models
   domain/extraction.py       candidate validation and quote binding
@@ -151,6 +162,14 @@ cache disabled so every pass is a fresh reading.
 
 ```bash
 ./.venv/bin/python evals/semantic_repeatability.py --repeats 3
+```
+
+Produce the scoped release decision and the correction candidates. Still read
+only, and the correction is never applied.
+
+```bash
+./.venv/bin/python -m clauseci.decide --pr 1
+./.venv/bin/python -m clauseci.decide --pr 1 --save
 ```
 
 `check.sh` verifies every provider integration, including Gmail. Unlike the

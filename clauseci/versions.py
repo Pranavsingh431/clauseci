@@ -49,3 +49,12 @@ SUPPORTED_OBLIGATION_FAMILY = "RETENTION_UPPER_BOUND"
 SEMANTIC_TEMPERATURE = 0.0
 SEMANTIC_TIMEOUT_SECONDS = 90
 SEMANTIC_MAX_REPAIR_ATTEMPTS = 1
+
+
+# ---------------------------------------------------------------- Phase 4
+# Shape of the serialized ReleaseDecision.
+DECISION_SCHEMA_VERSION = "1.0.0"
+
+# The ranking and candidate construction rules. Bump when the policy changes,
+# because the same inputs would then produce a different preferred candidate.
+DECISION_POLICY_VERSION = "scoped-retention-decision-1.0.0"

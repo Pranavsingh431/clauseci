@@ -242,6 +242,108 @@ clauses precisely so the analyzer has to leave them alone.
 
     python -m clauseci.obligations --pr <pull request URL>
 
+## The scoped release decision
+
+Everything from here is deterministic. No model is involved. The decision takes
+effective configuration values from the snapshot and validated obligations from
+the analyzer, and applies one predicate: for a customer and a category, is the
+effective retention value at most the represented cap.
+
+### Four states
+
+| State | Meaning |
+|---|---|
+| `PASS_SCOPED` | every represented supported predicate passed, for this exact configuration and this exact source snapshot |
+| `CONFLICT` | at least one represented supported predicate is violated |
+| `REVIEW_REQUIRED` | evidence is missing, identity is ambiguous, extraction failed, or a changed file looks retention related but is not understood |
+| `NO_SUPPORTED_CHANGE` | the changed file inventory is known, no supported surface changed, and nothing retention like is unrecognised |
+
+Precedence is CONFLICT, then REVIEW_REQUIRED, then NO_SUPPORTED_CHANGE, then
+PASS_SCOPED. A confirmed violation is the strongest statement available and is
+never softened into review required, but whatever was also unclear is still
+recorded in coverage and warnings.
+
+`PASS_SCOPED` is not a claim of legal compliance. It says the represented
+supported retention predicates passed for one recorded configuration against one
+recorded source snapshot. Nothing wider.
+
+### Four dispositions
+
+`SATISFIED`, `VIOLATED`, `NO_REPRESENTED_OBLIGATION`, `REVIEW_REQUIRED`.
+
+**`NO_REPRESENTED_OBLIGATION` is not `SATISFIED`.** It means the reviewed sources
+establish no cap for that category. No limit is inferred from that, in either
+direction. Acme Labs audit retention is exactly this case, and a test fails if it
+ever acquires a numeric limit.
+
+There is no separate disposition for an unchanged field. Change awareness is
+carried by `changed_by_pr`, `present_in_base`, `present_in_head`,
+`introduced_by_pr` and `resolved_by_pr`, which is enough to tell an introduced
+problem from one that was already there, and from one this change fixes.
+
+### Change awareness
+
+Both revisions are evaluated against the same bound evidence. That is what lets
+a conflict introduced by this pull request be told apart from a baseline conflict
+it merely inherited, and from one it resolves. A change that fixes one field but
+leaves another over its cap is still CONFLICT.
+
+### Three candidates
+
+| Candidate | Construction |
+|---|---|
+| A requested | the configuration exactly as proposed |
+| B baseline relevant fields | every field the change moved, returned to its baseline value |
+| C customer scoped correction | the request kept wherever the obligations permit it, with only the violating customer and category values pinned to baseline |
+
+No customer name and no retention number appears in the constructors. Candidate
+C is derived from the actual violations, the baseline and the obligations, so a
+different represented cap produces a different result without any code change.
+
+Every candidate is recomputed into effective values and put through the same
+evaluator as the actual head. A constructor that intended to be safe proves
+nothing. Candidate feasibility is `FEASIBLE_IN_SCOPE`, `CONFLICT` or `UNKNOWN`.
+It is deliberately never called `PASS_SCOPED`, because that name belongs only to
+a configuration that actually exists.
+
+### Usefulness and ranking
+
+The requested outcome set is frozen from the actual change before any candidate
+is built: every customer and category whose effective value moved, together with
+the value the change asked for. A candidate preserves an outcome when it produces
+that same value.
+
+Ranking, in order: reject anything that conflicts; never rank unresolved coverage
+above a known feasible candidate; prefer the most requested behaviour preserved;
+tie break on fewer changed fields against the requested head; tie break on
+candidate id so the order never depends on dictionary order.
+
+The result is described as the preferred supported candidate among the evaluated
+alternatives. It is not claimed to be globally optimal, the safest possible
+configuration, or the best legal solution.
+
+### A candidate is a proposal
+
+The actual head decision and the preferred candidate are separate fields and are
+computed independently. **A safe candidate never turns an unsafe head green.**
+For the hero change, the head is CONFLICT and candidate C is FEASIBLE_IN_SCOPE at
+the same time, and that is the correct pair of statements.
+
+The correction is rendered as proposed YAML and a unified diff. It is never
+applied, committed or pushed. The renderer edits lines so the patch stays
+minimal, then re-parses the result and checks it reproduces the candidate's own
+effective values before handing it over.
+
+### Coverage
+
+Every decision records which surfaces were checked, which customers and
+categories were evaluated, which categories have no represented cap, which
+changed files were unsupported or unrecognised, the corpus digest and the head
+SHA. It is bound to the exact head SHA, the exact corpus digest, and the parser,
+policy, decision policy, semantic model and prompt versions.
+
+    python -m clauseci.decide --pr <pull request URL>
+
 ## Model routing
 
 Verified working on OpenRouter with strict JSON schema output.
