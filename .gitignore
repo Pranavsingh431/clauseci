@@ -1,0 +1,28 @@
+# ---- SECRETS: never commit ----
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+token*.json
+*.pem
+*.key
+
+# ---- Python ----
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# ---- Runtime artifacts ----
+runs/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+.streamlit/secrets.toml
+
+# ---- macOS ----
+.DS_Store

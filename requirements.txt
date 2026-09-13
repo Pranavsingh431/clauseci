@@ -1,0 +1,19 @@
+# --- LLM runtime ---
+openai==2.44.0                    # used as OpenRouter client (base_url override)
+pydantic==2.13.4                  # structured output schemas
+tenacity==9.1.4                   # retries with backoff
+
+# --- External app integrations ---
+requests==2.32.3                  # GitHub REST
+google-api-python-client==2.184.0 # Drive + Gmail
+google-auth==2.42.1
+google-auth-oauthlib==1.2.2
+slack-sdk==3.36.0                 # Slack Web API
+
+# --- Documents ---
+pypdf==6.14.2                     # contract text extraction
+reportlab==4.4.4                  # generate demo contract PDFs (prep only)
+
+# --- UI / plumbing ---
+streamlit==1.58.0
+python-dotenv==1.1.1

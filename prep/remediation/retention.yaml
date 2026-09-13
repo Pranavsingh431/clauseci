@@ -1,0 +1,34 @@
+# Northwind Platform — data retention policy
+# All values in days. Per-customer values override `defaults`.
+# Changing any value here changes how long real customer data is kept.
+#
+# NOTE: acme-corp is contractually capped at 30 days by
+# NW-DPA-ACME-2026-A1 §2.1. Do not raise without an executed amendment.
+
+defaults:
+  application_logs_days: 90
+  diagnostic_logs_days: 90
+  audit_logs_days: 90
+  backup_retention_days: 30
+
+customers:
+  acme-corp:
+    display_name: "Acme Corporation"
+    application_logs_days: 30
+    diagnostic_logs_days: 30
+    audit_logs_days: 90
+    backup_retention_days: 7
+
+  globex:
+    display_name: "Globex International Ltd."
+    application_logs_days: 90
+    diagnostic_logs_days: 90
+    audit_logs_days: 365
+    backup_retention_days: 30
+
+  acme-labs:
+    display_name: "Acme Labs Pvt Ltd"
+    application_logs_days: 180
+    diagnostic_logs_days: 180
+    audit_logs_days: 180
+    backup_retention_days: 30
