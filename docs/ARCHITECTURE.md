@@ -140,6 +140,26 @@ No vector database. The corpus is 8 documents. No multi agent choreography, no
 LangGraph, no CrewAI, no AutoGen. No Kubernetes or cloud deployment. No webhook
 until the core workflow and its evaluation are finished.
 
+## Evidence snapshot
+
+Steps 1 to 3 produce an `AnalysisSnapshot`, which is the immutable record every
+later decision is bound to. It records the repository, the pull request, both
+exact revisions, the complete changed file inventory with a surface class per
+file, the full effective configuration at base and at head with provenance for
+every value, and every contract document with a provider identity, a digest of
+its bytes and a digest of its extracted text. A corpus digest covers the whole
+evidence set.
+
+The corpus digest is computed from file identity, provider revision and content
+digest, sorted by identity. It does not depend on filename or listing order, so
+a rename or a reordered listing leaves it unchanged, and any byte change moves
+it.
+
+The snapshot contains no contractual cap, no verdict and no expected result.
+Building one calls no model and writes nothing to any provider.
+
+    python -m clauseci.snapshot --pr <pull request URL>
+
 ## Model routing
 
 Verified working on OpenRouter with strict JSON schema output.

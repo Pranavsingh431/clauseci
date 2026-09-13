@@ -27,6 +27,18 @@ RETENTION_FIELDS: tuple[str, ...] = (
     "backup_retention_days",
 )
 
+# Every retention value in this schema is a whole number of days.
+RETENTION_UNIT = "days"
+
+# Categories ClauseCI judges, and the configuration field each one reads.
+# `backup_retention_days` is parsed but is not a judged category.
+CATEGORY_TO_FIELD: dict[str, str] = {
+    "application_logs": "application_logs_days",
+    "diagnostic_logs": "diagnostic_logs_days",
+    "audit_logs": "audit_logs_days",
+}
+SUPPORTED_CATEGORIES: tuple[str, ...] = tuple(CATEGORY_TO_FIELD)
+
 
 class ConfigError(ValueError):
     """The configuration document is not usable."""
@@ -45,6 +57,10 @@ class ValueSource(str, Enum):
 
     CUSTOMER_OVERRIDE = "customer_override"
     DEFAULT = "default"
+    # The customer block names the field but sets it to null, which clears the
+    # override. The default applies, but the intent was explicit, so it is
+    # recorded differently from a field that was simply absent.
+    DEFAULT_AFTER_EXPLICIT_NULL = "default_after_explicit_null"
 
 
 @dataclass(frozen=True)
@@ -55,6 +71,8 @@ class EffectiveValue:
     field: str
     value: int
     source: ValueSource
+    unit: str = RETENTION_UNIT
+    config_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,8 +149,12 @@ def parse_retention_config(text: str) -> RetentionConfig:
         entry: dict[str, Any] = {}
         for field, value in block.items():
             if field in RETENTION_FIELDS:
-                entry[field] = _require_day_count(
-                    value, f"customers.{customer_id}.{field}"
+                # An explicit null clears the override rather than setting a
+                # value. Anything else must be a whole day count.
+                entry[field] = (
+                    None
+                    if value is None
+                    else _require_day_count(value, f"customers.{customer_id}.{field}")
                 )
             else:
                 entry[field] = value
@@ -163,19 +185,27 @@ def resolve_effective(
     config._require_customer(customer_id)
 
     block = config.customers[customer_id]
-    if field in block:
+    override_is_explicit_null = field in block and block[field] is None
+
+    if field in block and not override_is_explicit_null:
         return EffectiveValue(
             customer_id=customer_id,
             field=field,
             value=int(block[field]),
             source=ValueSource.CUSTOMER_OVERRIDE,
+            config_path=f"customers.{customer_id}.{field}",
         )
     if field in config.defaults:
         return EffectiveValue(
             customer_id=customer_id,
             field=field,
             value=int(config.defaults[field]),
-            source=ValueSource.DEFAULT,
+            source=(
+                ValueSource.DEFAULT_AFTER_EXPLICIT_NULL
+                if override_is_explicit_null
+                else ValueSource.DEFAULT
+            ),
+            config_path=f"defaults.{field}",
         )
     raise ConfigError(
         f"{field!r} has no value for customer {customer_id!r}: it is absent "

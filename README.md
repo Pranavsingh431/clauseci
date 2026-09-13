@@ -12,9 +12,12 @@ controlling signed agreement, and records a decision on the pull request.
 
 ## Status
 
-Phase 1 complete. The hero fixture and the supported scope are frozen, and
-effective configuration resolution is implemented and tested. The analyzer, the
-action layer and the evaluation runner are not built yet.
+Phase 2 complete. ClauseCI can read a real pull request and its contract
+evidence, and pin all of it into one immutable, reproducible snapshot. No model
+is involved yet, and nothing outside the process is written.
+
+The contract interpreter, the decision layer, the action layer and the
+evaluation runner are not built yet.
 
 See `BUILD_START_REPORT.md` for exactly what existed before the build window
 opened, and what is being built during it.
@@ -58,17 +61,34 @@ retention.
 
 ```
 clauseci/                    runtime package
+  adapters/github.py         read only pull request and file reads
+  adapters/drive.py          read only contract document reads
+  domain/models.py           typed snapshot models
+  domain/snapshot.py         snapshot builder
+  domain/classification.py   changed file surface classification
+  domain/digests.py          canonical hashing and corpus digest
   config_resolution.py       deterministic effective value resolution
+  registry.py                trusted customer registry loader
+  settings.py                environment and repository allowlist
+  versions.py                schema, parser and policy versions
+  snapshot.py                command line entry point
   data/customer_registry.yaml  identity only, no caps, no expected answers
 demo_contracts/              8 synthetic contract PDFs
 evals/ground_truth/          hand written test oracle, never read at runtime
-tests/                       effective resolution and fixture consistency
+tests/                       resolution, fixture consistency, evidence snapshots
 prep/                        pre build setup and integration smoke tests
 docs/                        architecture, evaluation scenarios, runbook
 ```
 
-The separation that matters: `evals/ground_truth/` holds the expected answers
-and nothing under `clauseci/` is allowed to read it. A test enforces that.
+Two separations matter, and both are enforced by tests.
+
+`evals/ground_truth/` holds the expected answers, and nothing under `clauseci/`
+may read or import it. A snapshot is also checked for oracle terms, so an
+expected verdict cannot leak into evidence.
+
+Provider adapters are read only. A test greps the runtime package for status
+writes, Slack posts, Gmail drafts and non GET HTTP calls, and fails if one
+appears.
 
 ## Integration target
 
@@ -89,8 +109,19 @@ merged until ClauseCI has reported.
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 cp .env.example .env      # then fill in your own credentials
 ./.venv/bin/python -m pytest tests/ -q
-./check.sh                # verifies every provider integration
 ```
+
+Build an evidence snapshot for a pull request. This reads GitHub and Google
+Drive and writes nothing to either.
+
+```bash
+./.venv/bin/python -m clauseci.snapshot --pr https://github.com/Pranavsingh431/clauseci-demo-saas/pull/1
+./.venv/bin/python -m clauseci.snapshot --pr 1 --save    # also writes JSON under runs/
+```
+
+`check.sh` verifies every provider integration, including Gmail. Unlike the
+snapshot command it does write to each provider and then delete what it wrote,
+so it is a connectivity check rather than part of the product.
 
 `check.sh` proves connectivity by writing to each provider and then reading the
 result back. It needs `.env`, `credentials.json` and `token.json`, none of which
