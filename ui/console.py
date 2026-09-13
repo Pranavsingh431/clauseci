@@ -162,11 +162,11 @@ with head:
 
 with links:
     st.markdown(theme.spacer(26), unsafe_allow_html=True)
-    st.link_button("View source on GitHub", REPO_URL, use_container_width=True)
-    st.link_button("View the demo pull request", PR_URL, use_container_width=True)
+    st.link_button("View source on GitHub", REPO_URL, width="stretch")
+    st.link_button("View the demo pull request", PR_URL, width="stretch")
     st.link_button("System reliability brief",
                    f"{REPO_URL}/blob/main/SYSTEM_RELIABILITY_BRIEF.md",
-                   use_container_width=True)
+                   width="stretch")
 
 st.markdown(
     '<div class="cci-note" style="margin-top:10px">This public demo is built from '
@@ -224,7 +224,7 @@ with overview:
             "Recommended": after[customer_id]["application_logs"],
             "Corrected result": "Pass" if now["disposition"] != "VIOLATED" else "Conflict",
         })
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width="stretch", hide_index=True)
 
     labs_audit = unsafe_table["acme-labs"]["audit_logs"]
     st.markdown(
@@ -390,7 +390,7 @@ with decision_tab:
               "Verification": e["verification_state"],
               "Journal state": e.get("journal_state"),
               "Resource": e.get("provider_resource")} for e in receipt["effects"]],
-            use_container_width=True, hide_index=True)
+            width="stretch", hide_index=True)
         st.caption("Provider resource identifiers are replaced by a stable hash in this "
                    "public artifact. Cross record identity still checks.")
 
@@ -507,7 +507,7 @@ with evaluation_tab:
             st.dataframe(
                 [{"Scenario": r["scenario_id"], "Name": r["scenario_name"],
                   "Result": "pass" if r["passed"] else "FAIL"} for r in rows],
-                use_container_width=True, hide_index=True, height=260)
+                width="stretch", hide_index=True, height=260)
 
     st.markdown(theme.spacer(14), unsafe_allow_html=True)
     st.markdown("#### Scenario explorer")
