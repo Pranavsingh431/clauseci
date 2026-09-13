@@ -76,7 +76,13 @@ CASE_NAMESPACE = "clauseci-demo"
 # ---------------------------------------------------------------- Phase 6
 # Schema of the local SQLite journal. A mismatch fails loudly rather than
 # silently reading a database written by different code.
-JOURNAL_SCHEMA_VERSION = 1
+JOURNAL_SCHEMA_VERSION = 2  # Phase 7 added case lifecycle columns
 
 # How uncertain effects are reconciled against provider state.
 RECONCILIATION_POLICY_VERSION = "readback-reconcile-1.0.0"
+
+
+# ---------------------------------------------------------------- Phase 7
+# How a case moves between OPEN, RESOLVED and REVIEW_REQUIRED, and when a pass
+# is required to close an existing case.
+LIFECYCLE_POLICY_VERSION = "case-lifecycle-1.0.0"

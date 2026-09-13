@@ -37,6 +37,8 @@ class GithubStatusState(str, Enum):
 class SlackAction(str, Enum):
     NONE = "none"
     CREATE_OR_UPDATE_CASE = "create_or_update_case"
+    #: a pass on a pull request that already has an open case must close it
+    RESOLVE_CASE = "resolve_case"
 
 
 class ExecutionState(str, Enum):
@@ -152,12 +154,22 @@ STATE_TO_GITHUB: dict[DecisionState, GithubStatusState] = {
     DecisionState.NO_SUPPORTED_CHANGE: GithubStatusState.SUCCESS,
 }
 
-STATE_TO_SLACK: dict[DecisionState, SlackAction] = {
-    DecisionState.PASS_SCOPED: SlackAction.NONE,
-    DecisionState.CONFLICT: SlackAction.CREATE_OR_UPDATE_CASE,
-    DecisionState.REVIEW_REQUIRED: SlackAction.CREATE_OR_UPDATE_CASE,
-    DecisionState.NO_SUPPORTED_CHANGE: SlackAction.NONE,
-}
+def slack_action_for(state: DecisionState, *, case_is_open: bool) -> SlackAction:
+    """
+    The Slack action is context sensitive, and only for a pass.
+
+    A clean pass on a pull request nobody has raised a case about stays quiet.
+    A pass on a pull request that already has an open case must close it, or the
+    case sits open forever claiming a problem that is gone.
+
+    NO_SUPPORTED_CHANGE never resolves anything. Not touching the retention
+    configuration is not evidence that an earlier conflict was fixed.
+    """
+    if state is DecisionState.PASS_SCOPED:
+        return SlackAction.RESOLVE_CASE if case_is_open else SlackAction.NONE
+    if state in (DecisionState.CONFLICT, DecisionState.REVIEW_REQUIRED):
+        return SlackAction.CREATE_OR_UPDATE_CASE
+    return SlackAction.NONE
 
 #: GitHub truncates long descriptions, so keep them short and stable.
 STATE_TO_DESCRIPTION: dict[DecisionState, str] = {
@@ -188,7 +200,13 @@ class ExecutionPlan(Frozen):
 
     @property
     def requires_slack(self) -> bool:
-        return self.slack_effect.action is SlackAction.CREATE_OR_UPDATE_CASE
+        return self.slack_effect.action in (
+            SlackAction.CREATE_OR_UPDATE_CASE, SlackAction.RESOLVE_CASE
+        )
+
+    @property
+    def is_resolution(self) -> bool:
+        return self.slack_effect.action is SlackAction.RESOLVE_CASE
 
 
 def build_execution_plan(
@@ -198,14 +216,20 @@ def build_execution_plan(
     analysis_id: str,
     slack_channel_id: str,
     created_at: datetime,
+    case_is_open: bool = False,
 ) -> ExecutionPlan:
     """Turn a completed decision into a deterministic plan. No model involved."""
     state = decision.actual_head_state
     description = STATE_TO_DESCRIPTION[state][:GITHUB_DESCRIPTION_LIMIT]
 
-    slack_action = STATE_TO_SLACK[state]
+    slack_action = slack_action_for(state, case_is_open=case_is_open)
     if slack_action is SlackAction.NONE:
-        slack_reason = f"{state.value} does not open an engineering case"
+        slack_reason = f"{state.value} with no open case does not touch Slack"
+    elif slack_action is SlackAction.RESOLVE_CASE:
+        slack_reason = (
+            f"{state.value} on a pull request with an open case, so the case "
+            f"must be closed"
+        )
     else:
         slack_reason = f"{state.value} requires a human to see the evidence"
 

@@ -158,3 +158,91 @@ def expected_fields(decision: ReleaseDecision, plan: ExecutionPlan) -> dict[str,
             f"{preferred.requested_outcomes_total} requested category outcomes"
         )
     return fields
+
+
+RESOLVED_SCOPE_NOTE = (
+    "Scope: this result covers the represented log retention configuration and "
+    "the recorded source snapshot only. It is not a statement of legal compliance."
+)
+
+
+def render_resolved_case(
+    decision: ReleaseDecision,
+    plan: ExecutionPlan,
+    *,
+    previous_head_sha: str,
+    previous_decision: str,
+    legal_names: dict[str, str] | None = None,
+) -> str:
+    """
+    Rewrite the existing case to show the transition.
+
+    The wording is careful on one point. A developer applied the correction.
+    ClauseCI proposed it and then confirmed the result. Nothing here says the
+    agent changed the code, because it did not.
+    """
+    legal_names = legal_names or {}
+    lines: list[str] = []
+    add = lines.append
+
+    add(f"*ClauseCI RESOLVED* on {plan.repository} PR #{plan.pr_number}")
+    add("")
+    add(f"*Previous commit:* `{previous_head_sha[:8]}` decision {previous_decision}")
+    add(f"*Current commit:* `{plan.head_sha[:8]}` decision "
+        f"{decision.actual_head_state.value}")
+    add("")
+
+    resolved = [f for f in decision.findings
+                if f.disposition is Disposition.SATISFIED and f.represented_limit is not None]
+    by_customer: dict[str, list] = {}
+    for finding in resolved:
+        by_customer.setdefault(finding.customer_id, []).append(finding)
+
+    previously_violated = sorted({
+        f.customer_id for f in decision.baseline_findings
+        if f.disposition is Disposition.VIOLATED
+    }) or sorted(by_customer)
+
+    for customer_id in sorted(by_customer):
+        name = legal_names.get(customer_id, customer_id)
+        add(f"*{name}* (`{customer_id}`)")
+        for finding in sorted(by_customer[customer_id], key=lambda f: f.category.value):
+            add(f"  - {finding.category.value.replace('_', ' ')}: "
+                f"{finding.actual_value} days, within the represented limit of "
+                f"{finding.represented_limit} days")
+        source = by_customer[customer_id][0].controlling_source_id
+        if source:
+            add(f"  source: {source}")
+    add("")
+
+    unrepresented = decision.coverage.unrepresented_categories
+    if unrepresented:
+        add(f"*No represented obligation for:* {', '.join(unrepresented)}. "
+            f"No limit is inferred for these, and none is claimed now.")
+        add("")
+
+    add(f"Resolved by a developer commit at `{plan.head_sha[:8]}`. "
+        f"ClauseCI proposed the correction and confirmed the result. "
+        f"It did not change the code.")
+    add("")
+    add(RESOLVED_SCOPE_NOTE)
+    add("")
+    add(f"`{plan.slack_effect.marker}` `sha:{plan.head_sha}` "
+        f"`previous_sha:{previous_head_sha}` `analysis:{plan.analysis_id}`")
+    return "\n".join(lines)
+
+
+def resolved_expected_fields(
+    decision: ReleaseDecision, plan: ExecutionPlan, *, previous_head_sha: str
+) -> dict[str, str]:
+    """Meaningful values verification must find in the resolved case."""
+    return {
+        "case_marker": plan.slack_effect.marker,
+        "repository": plan.repository,
+        "pr_number": f"#{plan.pr_number}",
+        "head_sha": plan.head_sha,
+        "previous_head_sha": previous_head_sha,
+        "state": "RESOLVED",
+        "decision": decision.actual_head_state.value,
+        "developer_attribution": "It did not change the code.",
+    }

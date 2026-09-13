@@ -17,7 +17,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from clauseci.decide import ReleaseDecision, decide
-from clauseci.domain.case_message import expected_fields, render_case
+from clauseci.domain.case_message import (
+    expected_fields,
+    render_case,
+    render_resolved_case,
+    resolved_expected_fields,
+)
 from clauseci.domain.decision import DecisionState
 from clauseci.domain.digests import canonical_json
 from clauseci.domain.execution import (
@@ -43,7 +48,7 @@ from clauseci.faults import (
     InjectedFailure,
     InjectedResponseLoss,
 )
-from clauseci.journal import Journal, LockNotAcquired
+from clauseci.journal import CaseState, Journal, LockNotAcquired
 from clauseci.reconcile import (
     ReconciliationOutcome,
     reconcile_github_status,
@@ -220,13 +225,22 @@ class Workflow:
     # ------------------------------------------------------------- execution
 
     def build_plan(self, bundle: AnalysisBundle) -> ExecutionPlan:
+        """
+        Build the plan, taking the existing case state into account.
+
+        Whether a pass stays quiet or closes a case depends on whether a case is
+        already open, so the journal is consulted before the plan is fixed.
+        """
         channel = getattr(self.slack_writer, "channel_id", "") if self.slack_writer else ""
+        journal = self.journal or Journal()
+        existing = journal.get_case(bundle.case_id)
         return build_execution_plan(
             decision=bundle.decision,
             case_id=bundle.case_id,
             analysis_id=bundle.analysis_id,
             slack_channel_id=channel,
             created_at=datetime.now(timezone.utc),
+            case_is_open=bool(existing and existing.is_open),
         )
 
     def execute(self, bundle: AnalysisBundle, plan: ExecutionPlan | None = None) -> ExecutionReceipt:
@@ -530,8 +544,18 @@ class Workflow:
                                 target=target, error="no Slack writer is configured")
 
         legal_names = {c.customer_id: c.legal_entity_name for c in self.registry.customers}
-        text = render_case(bundle.decision, plan, legal_names=legal_names)
-        wanted = expected_fields(bundle.decision, plan)
+        previous = self._previous_conflicting_analysis(journal, plan)
+        if plan.is_resolution:
+            text = render_resolved_case(
+                bundle.decision, plan, legal_names=legal_names,
+                previous_head_sha=previous["head_sha"],
+                previous_decision=previous["decision"],
+            )
+            wanted = resolved_expected_fields(
+                bundle.decision, plan, previous_head_sha=previous["head_sha"])
+        else:
+            text = render_case(bundle.decision, plan, legal_names=legal_names)
+            wanted = expected_fields(bundle.decision, plan)
         marker = plan.slack_effect.marker
         digest = payload_digest(text)
         payload = {"marker": marker, "channel": plan.slack_effect.channel_id,
@@ -638,6 +662,21 @@ class Workflow:
                         reconciliation_detail=detail, error=detail,
                         attempt_count=updated.attempt_count)
 
+        if plan.is_resolution and existing_ref is None:
+            detail = (
+                "a resolution must update the existing case, and no existing case "
+                "could be found. refusing to open a new root case for a pass"
+            )
+            closed = journal.transition_effect(
+                key, EffectState.FAILED, last_error=detail,
+                reconciliation_state=found.outcome.value)
+            return EffectRecord(provider="slack", action="refused_missing_case",
+                                target=target, intended_payload_digest=digest,
+                                effect_key=key, journal_state=closed.state.value,
+                                reconciliation_outcome=found.outcome.value,
+                                reconciliation_detail=detail, error=detail,
+                                attempt_count=closed.attempt_count)
+
         journal.transition_effect(key, EffectState.IN_FLIGHT, bump_attempt=True)
         try:
             self.faults.check(FaultPoint.BEFORE_PROVIDER_CALL,
@@ -708,8 +747,19 @@ class Workflow:
         journal.set_case_slack_resource(
             plan.case_id, ref.resource_id, payload_digest(body))
 
+        if plan.is_resolution and not mismatches:
+            # the case only closes once the closure itself has been read back
+            journal.set_case_state(
+                plan.case_id, CaseState.RESOLVED,
+                resolved_by_analysis_id=plan.analysis_id,
+                resolved_head_sha=plan.head_sha,
+            )
+        elif plan.slack_effect.action is SlackAction.CREATE_OR_UPDATE_CASE and not mismatches:
+            journal.set_case_state(plan.case_id, CaseState.OPEN)
+
         return EffectRecord(
-            provider="slack", action=action, target=target,
+            provider="slack", action="resolve_case" if plan.is_resolution else action,
+            target=target,
             intended_payload_digest=digest, effect_key=key,
             provider_resource_id=ref.resource_id,
             normalized_observed_payload=normalized,
@@ -718,6 +768,14 @@ class Workflow:
             reconciliation_outcome=found.outcome.value,
             reconciliation_detail=found.detail,
             attempt_count=updated.attempt_count)
+
+    def _previous_conflicting_analysis(self, journal, plan) -> dict:
+        """The earlier analysis this resolution is closing, for the audit trail."""
+        for row in reversed(journal.analyses_for_case(plan.case_id)):
+            if row["head_sha"] != plan.head_sha and row["decision"] != "PASS_SCOPED":
+                return {"head_sha": row["head_sha"], "decision": row["decision"],
+                        "analysis_id": row["analysis_id"]}
+        return {"head_sha": plan.head_sha, "decision": "unknown", "analysis_id": ""}
 
     def _seal(
         self, plan, bundle, started_at, state, freshness, *, github, slack, summary,

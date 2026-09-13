@@ -519,6 +519,70 @@ lock. It does not attempt distributed coordination.
     python -m clauseci.state inspect --pr 1
     python -m clauseci.state reconcile --pr 1
 
+## The correction lifecycle
+
+One case spans many commits. A new head is a new analysis, never a rewrite of
+the old one.
+
+### What ClauseCI does and does not do
+
+ClauseCI proposes a correction. A developer applies it. **ClauseCI does not
+commit, push or merge code.** A test greps the whole runtime package for
+`git push`, `git commit`, `subprocess` and `os.system` and fails if any appear.
+The write adapters contain no merge operation.
+
+### The hero lifecycle, as it really ran
+
+| | unsafe commit | corrected commit |
+|---|---|---|
+| head | `ed423b0b` | `a47f5657` |
+| analysis | `an-988da41c` | `an-cc89f6f7` |
+| decision | CONFLICT | PASS_SCOPED |
+| GitHub status | failure | success |
+| receipt | VERIFIED | VERIFIED |
+
+Same case `cci-612892eccea4`. Same Slack resource. The unsafe commit keeps its
+failing status forever, and the corrected commit earned its own.
+
+### A pass is context sensitive
+
+This is the Phase 7 change. A clean pass on a pull request nobody raised a case
+about stays quiet. A pass on a pull request that already has an open case must
+**close** it, or the case sits open forever claiming a problem that is gone.
+
+| Decision | Existing case | GitHub | Slack |
+|---|---|---|---|
+| PASS_SCOPED | none | success | nothing |
+| PASS_SCOPED | open | success | resolve the existing case, required |
+| CONFLICT | any | failure | open or update |
+| REVIEW_REQUIRED | any | failure | open or update |
+| NO_SUPPORTED_CHANGE | any | success | nothing, ever |
+
+`NO_SUPPORTED_CHANGE` never resolves anything. Not touching the retention
+configuration is not evidence that an earlier conflict was fixed.
+
+### Closure is verified, not assumed
+
+A resolution updates the existing Slack resource by its recorded id. It never
+opens a second root case, and a resolution that cannot find an existing case is
+refused rather than turned into a new message. The case only moves to `RESOLVED`
+after the closure has been read back out of Slack with the correct case id, both
+commit SHAs and the current decision present.
+
+The Phase 6 human edit protection still applies. A case a person has edited is
+not overwritten by a resolution, and the case stays open.
+
+### Wording
+
+The resolved message says the correction was applied by a developer commit, and
+that ClauseCI proposed it and confirmed the result but did not change the code.
+Tests assert that phrases like "auto-remediated" and "fixed automatically" never
+appear.
+
+    python -m clauseci.correction --pr 1 --save
+    python -m clauseci.state inspect --pr 1
+    python -m clauseci.state evidence --pr 1
+
 ## Model routing
 
 Verified working on OpenRouter with strict JSON schema output.

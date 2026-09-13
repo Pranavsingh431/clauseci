@@ -48,6 +48,14 @@ This is not exactly once, and does not claim to be. It is: intent recorded befor
 action, uncertainty kept as uncertainty, and no blind retry when a prior outcome
 cannot be established.
 
+When a developer applies the correction and pushes, the new commit is analysed
+on its own. It gets its own snapshot, its own analysis and its own status. The
+unsafe commit keeps its failing check permanently. The same Slack case, the same
+resource, moves to RESOLVED and names both commits.
+
+ClauseCI proposes the correction. A developer applies it. ClauseCI does not
+commit, push or merge code, and a test greps the runtime to keep it that way.
+
 The evaluation runner is not built yet.
 
 See `BUILD_START_REPORT.md` for exactly what existed before the build window
@@ -107,7 +115,8 @@ clauseci/                    runtime package
   journal.py                 durable SQLite journal of cases, analyses and effects
   reconcile.py               resolving uncertain effects against provider state
   domain/effects.py          effect keys and the effect state machine
-  state.py                   journal inspection and manual reconciliation
+  state.py                   lifecycle inspection, reconciliation, evidence
+  correction.py              the developer correction artifact
   faults.py                  deterministic fault injection, test use only
   domain/decision.py         decision states, dispositions, the predicate
   domain/candidates.py       three correction constructors and ranking
@@ -212,8 +221,16 @@ Run the whole workflow. Read only unless you ask for writes.
 Inspect what was intended and what was confirmed, or resolve anything left open.
 
 ```bash
-./.venv/bin/python -m clauseci.state inspect --pr 1
+./.venv/bin/python -m clauseci.state inspect --pr 1     # the whole case lifecycle
+./.venv/bin/python -m clauseci.state evidence --pr 1    # sanitized lifecycle summary
 ./.venv/bin/python -m clauseci.state reconcile --pr 1
+```
+
+Produce the correction for a developer to apply. This writes nothing to any
+repository.
+
+```bash
+./.venv/bin/python -m clauseci.correction --pr 1 --save
 ```
 
 `check.sh` verifies every provider integration, including Gmail. Unlike the

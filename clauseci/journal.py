@@ -19,6 +19,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,6 +52,14 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class CaseState(str, Enum):
+    """Lifecycle of one engineering case. Deliberately small."""
+
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+
+
 @dataclass(frozen=True)
 class CaseRow:
     case_id: str
@@ -61,8 +70,15 @@ class CaseRow:
     slack_resource_id: str | None
     slack_payload_digest: str | None
     state: str
+    resolved_by_analysis_id: str | None
+    resolved_head_sha: str | None
+    resolved_at: str | None
     created_at: str
     updated_at: str
+
+    @property
+    def is_open(self) -> bool:
+        return self.state in (CaseState.OPEN.value, CaseState.REVIEW_REQUIRED.value)
 
 
 @dataclass(frozen=True)
@@ -100,6 +116,9 @@ CREATE TABLE IF NOT EXISTS cases (
     slack_resource_id    TEXT,
     slack_payload_digest TEXT,
     state                TEXT NOT NULL DEFAULT 'OPEN',
+    resolved_by_analysis_id TEXT,
+    resolved_head_sha       TEXT,
+    resolved_at             TEXT,
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL
 );
@@ -198,12 +217,30 @@ class Journal:
                 "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?)",
                 (str(JOURNAL_SCHEMA_VERSION),),
             )
+        elif int(row["value"]) == 1 and JOURNAL_SCHEMA_VERSION == 2:
+            self._migrate_1_to_2()
         elif int(row["value"]) != JOURNAL_SCHEMA_VERSION:
             raise SchemaMismatch(
                 f"the journal at {self.path} is schema version {row['value']}, "
                 f"this build expects {JOURNAL_SCHEMA_VERSION}. refusing to use it "
                 f"rather than risk corrupting prior state"
             )
+
+    def _migrate_1_to_2(self) -> None:
+        """
+        Add the case lifecycle columns.
+
+        Explicit and small. Prior rows keep their data and default to OPEN,
+        which is what they were.
+        """
+        existing = {row["name"] for row in
+                    self._connection.execute("PRAGMA table_info(cases)").fetchall()}
+        for column in ("resolved_by_analysis_id", "resolved_head_sha", "resolved_at"):
+            if column not in existing:
+                self._connection.execute(f"ALTER TABLE cases ADD COLUMN {column} TEXT")
+        self._connection.execute(
+            "UPDATE schema_meta SET value = ? WHERE key = 'schema_version'",
+            (str(JOURNAL_SCHEMA_VERSION),))
 
     @contextmanager
     def transaction(self):
@@ -242,6 +279,33 @@ class Journal:
             "SELECT * FROM cases WHERE case_id = ?", (case_id,)
         ).fetchone()
         return CaseRow(**dict(row)) if row else None
+
+    def set_case_state(
+        self, case_id: str, state: "CaseState", *,
+        resolved_by_analysis_id: str | None = None,
+        resolved_head_sha: str | None = None,
+    ) -> CaseRow:
+        """
+        Move a case through its lifecycle.
+
+        Resolution metadata is recorded alongside, so a resolved case always
+        says which analysis and which commit closed it.
+        """
+        resolved_at = _now() if state is CaseState.RESOLVED else None
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                UPDATE cases SET state = ?,
+                    resolved_by_analysis_id = COALESCE(?, resolved_by_analysis_id),
+                    resolved_head_sha = COALESCE(?, resolved_head_sha),
+                    resolved_at = COALESCE(?, resolved_at),
+                    updated_at = ?
+                WHERE case_id = ?
+                """,
+                (state.value, resolved_by_analysis_id, resolved_head_sha,
+                 resolved_at, _now(), case_id),
+            )
+        return self.get_case(case_id)
 
     def set_case_slack_resource(
         self, case_id: str, resource_id: str | None, payload_digest: str | None

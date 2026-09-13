@@ -44,13 +44,28 @@ def inspect(journal: Journal, case_id: str) -> int:
     print(f"  slack resource    {case.slack_resource_id or 'not recorded'}")
     print(f"  created / updated {case.created_at} / {case.updated_at}")
 
+    if case.resolved_at:
+        print(f"  resolved by       {case.resolved_by_analysis_id} at "
+              f"{(case.resolved_head_sha or '')[:12]}")
+        print(f"  resolved at       {case.resolved_at}")
+
     analyses = journal.analyses_for_case(case_id)
-    print(f"\n  ANALYSES  ({len(analyses)} for this one case)")
-    print(f"    {'analysis':<20} {'head sha':<14} {'decision':<20} {'model':<28}")
-    print(f"    {'-'*20} {'-'*14} {'-'*20} {'-'*28}")
-    for row in analyses:
-        print(f"    {row['analysis_id']:<20} {row['head_sha'][:12]:<14} "
-              f"{row['decision']:<20} {row['semantic_model']:<28}")
+    receipts = journal._connection.execute(
+        "SELECT analysis_id, execution_state, created_at FROM receipts "
+        "WHERE case_id = ? ORDER BY created_at", (case_id,)).fetchall()
+    receipt_by_analysis = {r["analysis_id"]: r["execution_state"] for r in receipts}
+
+    print(f"\n  LIFECYCLE  ({len(analyses)} analysis/analyses on this one case)")
+    for index, row in enumerate(analyses, start=1):
+        effects = [e for e in journal.effects_for_case(case_id)
+                   if e.analysis_id == row["analysis_id"]]
+        print(f"\n    ANALYSIS {index}  {row['analysis_id']}")
+        print(f"      head sha    {row['head_sha']}")
+        print(f"      decision    {row['decision']}")
+        print(f"      receipt     {receipt_by_analysis.get(row['analysis_id'], 'none')}")
+        print(f"      effects     " + (", ".join(
+            f"{e.provider}:{e.state.value}" for e in effects) or "none"))
+    print("")
 
     effects = journal.effects_for_case(case_id)
     print(f"\n  EFFECTS  ({len(effects)})")
@@ -109,9 +124,74 @@ def reconcile(journal: Journal, case_id: str | None) -> int:
     return 0
 
 
+def lifecycle_evidence(journal: Journal, case_id: str) -> dict:
+    """
+    A sanitized lifecycle summary.
+
+    Provider resource ids and commit shas are included because they are the
+    evidence. No token, OAuth data or unrelated account information is.
+    """
+    case = journal.get_case(case_id)
+    if case is None:
+        raise ValueError(f"no case {case_id}")
+
+    receipts = journal._connection.execute(
+        "SELECT analysis_id, head_sha, corpus_digest, execution_state, receipt_json, "
+        "created_at FROM receipts WHERE case_id = ? ORDER BY created_at", (case_id,)
+    ).fetchall()
+    by_analysis = {}
+    for row in receipts:
+        by_analysis[row["analysis_id"]] = dict(row)
+
+    analyses = []
+    for row in journal.analyses_for_case(case_id):
+        receipt = by_analysis.get(row["analysis_id"], {})
+        effects = [e for e in journal.effects_for_case(case_id)
+                   if e.analysis_id == row["analysis_id"]]
+        analyses.append({
+            "analysis_id": row["analysis_id"],
+            "head_sha": row["head_sha"],
+            "base_sha": row["base_sha"],
+            "corpus_digest": row["corpus_digest"],
+            "decision": row["decision"],
+            "semantic_model": row["semantic_model"],
+            "semantic_prompt_version": row["semantic_prompt_version"],
+            "receipt_state": receipt.get("execution_state"),
+            "receipt_at": receipt.get("created_at"),
+            "effects": [{
+                "provider": e.provider, "action": e.action_type,
+                "state": e.state.value, "effect_key": e.effect_key,
+                "provider_resource_id": e.provider_resource_id,
+            } for e in effects],
+        })
+
+    return {
+        "case_id": case.case_id,
+        "repository": case.repository_full_name,
+        "pr_number": case.pr_number,
+        "case_state": case.state,
+        "slack_resource_id": case.slack_resource_id,
+        "resolved_by_analysis_id": case.resolved_by_analysis_id,
+        "resolved_head_sha": case.resolved_head_sha,
+        "resolved_at": case.resolved_at,
+        "analyses": analyses,
+        "one_case_many_analyses": len(analyses) > 1,
+        "distinct_analysis_ids": len({a["analysis_id"] for a in analyses}) == len(analyses),
+        "distinct_head_shas": len({a["head_sha"] for a in analyses}) == len(analyses),
+        "single_slack_resource": len({
+            e["provider_resource_id"] for a in analyses for e in a["effects"]
+            if e["provider"] == "slack" and e["provider_resource_id"]
+        }) <= 1,
+        "statement": (
+            "The correction was applied by a developer commit. ClauseCI proposed "
+            "it and verified the result. ClauseCI does not commit, push or merge."
+        ),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m clauseci.state")
-    parser.add_argument("command", choices=["inspect", "reconcile"])
+    parser.add_argument("command", choices=["inspect", "reconcile", "evidence"])
     parser.add_argument("--case", help="case id")
     parser.add_argument("--pr", type=int, help="pull request number, to derive the case id")
     parser.add_argument("--owner", default=os.environ.get("GITHUB_OWNER", ""))
@@ -134,6 +214,16 @@ def main(argv: list[str] | None = None) -> int:
             print("give --case or --pr")
             return 2
         return inspect(journal, case_id)
+    if args.command == "evidence":
+        from clauseci.settings import ROOT
+        evidence = lifecycle_evidence(journal, case_id)
+        print(json.dumps(evidence, indent=2, sort_keys=True))
+        out = ROOT / "runs" / "lifecycle"
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / f"lifecycle-{case_id}.json"
+        path.write_text(json.dumps(evidence, indent=2, sort_keys=True))
+        print(f"\n  saved {path.relative_to(ROOT)}")
+        return 0
     return reconcile(journal, case_id)
 
 
